@@ -1,0 +1,5 @@
+{
+  "threshold_percent": 95,
+  "poll_interval_seconds": 30
+}
+
