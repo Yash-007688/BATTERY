@@ -182,7 +182,7 @@ def format_timedelta(delta: timedelta) -> str:
 
 
 def load_config() -> tuple[int, int]:
-    threshold = 95
+    threshold = 80
     interval = 30
     if os.path.isfile(CONFIG_PATH):
         try:
@@ -214,18 +214,18 @@ def main() -> None:
     # Flags requested: -f 95% -n 85%
     parser.add_argument("threshold", nargs="?", type=parse_percent_arg, help="threshold percent (e.g. 95 or 95%)")
     parser.add_argument("interval", nargs="?", type=int, help="poll interval seconds (e.g. 30)")
-    parser.add_argument("-f", "--from-threshold", dest="from_threshold", type=parse_percent_arg, help="legacy/current threshold value (e.g. 95%)")
+    parser.add_argument("-f", "--current-threshold", dest="current_threshold", type=parse_percent_arg, help="current threshold value (e.g. 95%)")
     parser.add_argument("-n", "--new-threshold", dest="new_threshold", type=parse_percent_arg, help="new threshold value to use (e.g. 85%)")
 
     args = parser.parse_args()
 
-    # Determine threshold precedence: new_threshold (-n) > from_threshold (-f) > positional > config
+    # Determine threshold precedence: new_threshold (-n) > current_threshold (-f) > positional > config
     threshold = (
         args.new_threshold
         if args.new_threshold is not None
         else (
-            args.from_threshold
-            if args.from_threshold is not None
+            args.current_threshold
+            if args.current_threshold is not None
             else (args.threshold if args.threshold is not None else default_threshold)
         )
     )
