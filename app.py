@@ -29,6 +29,10 @@ class BatteryMonitor:
         self._start_time: datetime | None = None
         self._reached_time: datetime | None = None
         self._alerted: bool = False
+        self._alert_active: bool = False
+        self._snooze_until: datetime | None = None
+        self._dismissed_until_below: bool = False
+        self._last_below_threshold: bool = True
 
     def start(self) -> None:
         self._start_time = datetime.now()
@@ -75,6 +79,10 @@ class BatteryMonitor:
                     self._update_threshold(new_threshold)
                 else:
                     print("Usage: set <percent>  (e.g., set 90)")
+            elif user_input.lower() == "snooze":
+                self._handle_snooze()
+            elif user_input.lower() == "dismiss":
+                self._handle_dismiss()
             else:
                 print("Unknown command. Use 'set <percent>' or 'quit'.")
 
@@ -113,12 +121,33 @@ class BatteryMonitor:
             status = "Plugged" if plugged else "On battery"
             line = f"[{now_str}] Battery: {percent:.0f}% | {status} | Threshold: {self.threshold_percent}%"
 
-            if self._reached_time is None and percent >= self.threshold_percent:
-                self._reached_time = datetime.now()
-                if not self._alerted:
-                    self._beep()
-                    self._alerted = True
-                line += " | Reached threshold!"
+            # Reset dismissal when battery drops below threshold
+            current_below = percent < self.threshold_percent
+            if current_below and not self._last_below_threshold:
+                self._dismissed_until_below = False
+                self._alerted = False
+                self._alert_active = False
+                self._reached_time = None
+            self._last_below_threshold = current_below
+
+            # If snoozed, skip alert until snooze ends
+            if self._snooze_until is not None and datetime.now() < self._snooze_until:
+                remaining = self._snooze_until - datetime.now()
+                line += f" | Snoozed {format_timedelta(remaining)}"
+            else:
+                if self._snooze_until is not None and datetime.now() >= self._snooze_until:
+                    # Snooze expired
+                    self._snooze_until = None
+
+                # Only trigger alert when plugged and at/above threshold and not dismissed
+                if plugged and not self._dismissed_until_below and percent >= self.threshold_percent:
+                    if self._reached_time is None:
+                        self._reached_time = datetime.now()
+                    if not self._alert_active:
+                        self._trigger_alert()
+                        self._alert_active = True
+                        self._alerted = True
+                    line += " | Reached threshold! (type 'snooze' or 'dismiss')"
 
             if self._start_time is not None and self._reached_time is not None:
                 delta = self._reached_time - self._start_time
@@ -146,10 +175,7 @@ class BatteryMonitor:
     def _beep(self) -> None:
         try:
             if winsound is not None:
-                # Two quick beeps
-                winsound.Beep(1000, 500)
-                time.sleep(0.1)
-                winsound.Beep(1400, 600)
+                winsound.Beep(1000, 300)
             else:
                 # Fallback to terminal bell
                 sys.stdout.write('\a')
@@ -157,6 +183,37 @@ class BatteryMonitor:
         except Exception:
             # Ignore sound errors
             pass
+
+    def _beep_times(self, times: int, freq1: int = 1000, freq2: int = 1400) -> None:
+        for i in range(times):
+            try:
+                if winsound is not None:
+                    winsound.Beep(freq1 if i % 2 == 0 else freq2, 250)
+                else:
+                    sys.stdout.write('\a')
+                    sys.stdout.flush()
+                time.sleep(0.07)
+            except Exception:
+                pass
+
+    def _trigger_alert(self) -> None:
+        # 5 beeps, then present options
+        self._beep_times(5)
+        print("Battery reached threshold. Type 'snooze' to mute for 1 minute or 'dismiss' (requires unplugging charger).")
+
+    def _handle_snooze(self) -> None:
+        self._snooze_until = datetime.now() + timedelta(minutes=1)
+        self._alert_active = False
+        print(f"Snoozed until {self._snooze_until.strftime('%H:%M:%S')}")
+
+    def _handle_dismiss(self) -> None:
+        percent, plugged = self._get_battery()
+        if plugged:
+            print("Cannot dismiss while charger is plugged in. Unplug the charger, then type 'dismiss' again.")
+            return
+        self._dismissed_until_below = True
+        self._alert_active = False
+        print("Dismissed. Alerts will resume after battery drops below threshold and rises again.")
 
     def _save_config(self) -> None:
         try:

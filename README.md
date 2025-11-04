@@ -38,6 +38,9 @@ python app.py -f 95% -n 85%
 ### While Running
 - Type `set <percent>` to change threshold (e.g., `set 90`).
 - Type `quit` to exit.
+ - When threshold is reached while plugged in, it will beep 5 times and show options:
+   - Type `snooze` to mute alerts for 1 minute.
+   - Type `dismiss` to silence until battery drops below threshold and rises again (requires unplugging charger first).
 
 ### Configuration File
 `battery_config.json`
