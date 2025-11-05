@@ -34,11 +34,20 @@ class BatteryMonitor:
         self._dismissed_until_below: bool = False
         self._last_below_threshold: bool = True
 
+        # Per-minute change tracking (percent-based; voltage not available via psutil)
+        self._minute_anchor_time: datetime | None = None
+        self._minute_anchor_percent: float | None = None
+        self._per_minute_diffs: list[float] = []
+
     def start(self) -> None:
         self._start_time = datetime.now()
         self._start_percent = self._get_battery_percent()
         self._reached_time = None
         self._alerted = False
+
+        # Initialize 1-minute tracking window
+        self._minute_anchor_time = self._start_time
+        self._minute_anchor_percent = self._start_percent
 
         print(
             f"Monitoring started at {self._start_time.strftime('%H:%M:%S')}. "
@@ -149,9 +158,32 @@ class BatteryMonitor:
                         self._alerted = True
                     line += " | Reached threshold! (type 'snooze' or 'dismiss')"
 
+            # Every full minute since last anchor, compute percent difference and record
+            now_dt = datetime.now()
+            if self._minute_anchor_time is None:
+                self._minute_anchor_time = now_dt
+                self._minute_anchor_percent = percent
+            else:
+                elapsed = (now_dt - self._minute_anchor_time).total_seconds()
+                # Handle multiple minutes elapsed in case of longer polling intervals/sleeps
+                while elapsed >= 60.0 and self._minute_anchor_percent is not None:
+                    diff = percent - self._minute_anchor_percent
+                    self._per_minute_diffs.append(diff)
+                    # Report the just-computed 1-minute change
+                    print(f"[{now_str}] Δ1m: {diff:+.1f}%")
+                    # Advance anchor by 60s and set anchor percent to current percent
+                    self._minute_anchor_time = self._minute_anchor_time + timedelta(seconds=60)
+                    self._minute_anchor_percent = percent
+                    elapsed -= 60.0
+
             if self._start_time is not None and self._reached_time is not None:
                 delta = self._reached_time - self._start_time
                 line += f" | Time to reach: {format_timedelta(delta)}"
+                # When showing total charging time, also include min/max per-minute differences
+                if self._per_minute_diffs:
+                    min_diff = min(self._per_minute_diffs)
+                    max_diff = max(self._per_minute_diffs)
+                    line += f" | Δ1m min: {min_diff:+.1f}% max: {max_diff:+.1f}%"
 
             print(line)
 
