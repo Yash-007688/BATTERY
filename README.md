@@ -81,4 +81,18 @@ Edits to this file persist between runs. Live changes while the app is running s
 - If battery info is not available on your system, the app will print a warning.
 - Δ1m values use battery percentage. Windows `psutil` does not expose battery voltage; voltage differences are not available.
 
+### FAQ
+
+**Q: Why does the app show percentage differences and not voltage?**
+
+A: On Windows, `psutil` exposes battery percentage and plugged state but not voltage. Therefore, Δ1m is calculated using percentage per minute, not volts.
+
+**Q: My poll interval isn’t exactly 60s. Will Δ1m still work?**
+
+A: Yes. The app tracks an internal 1-minute anchor and will print Δ1m once each full minute has elapsed since the last anchor. If your poll interval is longer than 60s, the Δ1m line may appear on the next update after a minute (or more) has passed.
+
+**Q: Does Δ1m track when discharging too?**
+
+A: It records percent changes continuously, whether plugged in or on battery. Positive values typically indicate charging; negative values indicate discharging.
+
 
