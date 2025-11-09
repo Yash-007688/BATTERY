@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -124,11 +125,38 @@ class BatteryMonitor:
 
     def _monitor_loop(self) -> None:
         while not self._stop_event.is_set():
-            percent, plugged = self._get_battery()
+            percent, plugged, device, device_id, extra_info = self._get_battery_info()
             now_str = datetime.now().strftime('%H:%M:%S')
 
-            status = "Plugged" if plugged else "On battery"
-            line = f"[{now_str}] Battery: {percent:.0f}% | {status} | Threshold: {self.threshold_percent}%"
+            if device == 'phone' and device_id and not hasattr(self, '_phone_printed'):
+                tech_info = f" ({extra_info.get('technology', 'Unknown')})" if extra_info and 'technology' in extra_info else ""
+                print(f"Phone connected: {device_id}{tech_info}")
+                self._phone_printed = True
+            elif device == 'laptop' and hasattr(self, '_phone_printed'):
+                delattr(self, '_phone_printed')
+
+            status = "Charging" if device == 'phone' else ("Plugged" if plugged else "On battery")
+            line = f"[{now_str}] {device.capitalize()} Battery: {percent:.0f}% | {status} | Threshold: {self.threshold_percent}%"
+            
+            # Add device-specific details (voltage, temperature, health, technology)
+            if extra_info:
+                details = []
+                if 'voltage' in extra_info:
+                    voltage_v = extra_info['voltage'] / 1000.0  # Convert mV to V
+                    details.append(f"{voltage_v:.2f}V")
+                if 'temperature' in extra_info:
+                    temp_c = extra_info['temperature'] / 10.0  # Convert 0.1°C to °C
+                    details.append(f"{temp_c:.1f}°C")
+                if 'technology' in extra_info:
+                    details.append(extra_info['technology'])
+                if 'health' in extra_info:
+                    # For phone: only show if not "Good", for laptop: show if degraded
+                    if device == 'phone' and extra_info['health'] != "Good":
+                        details.append(f"Health: {extra_info['health']}")
+                    elif device == 'laptop':
+                        details.append(f"Health: {extra_info['health']}")
+                if details:
+                    line += f" | {', '.join(details)}"
 
             # Reset dismissal when battery drops below threshold
             current_below = percent < self.threshold_percent
@@ -193,6 +221,139 @@ class BatteryMonitor:
                 time.sleep(min(0.5, remaining))
                 remaining -= 0.5
 
+    def _get_laptop_battery_details(self) -> dict | None:
+        """
+        Get detailed laptop battery info via Windows WMI.
+        Returns dict with: voltage (mV), chemistry, design_capacity (mWh), full_charge_capacity (mWh), health, temperature
+        """
+        try:
+            # Use PowerShell to query WMI for battery details
+            ps_cmd = """
+            $battery = Get-CimInstance -ClassName Win32_Battery | Select-Object -First 1
+            $temp = $null
+            if ($battery) {
+                $voltage = $battery.DesignVoltage
+                $chemistry = $battery.Chemistry
+                $designCap = $battery.DesignCapacity
+                $fullCap = $battery.FullChargeCapacity
+                $status = $battery.BatteryStatus
+                $health = if ($fullCap -and $designCap) { [math]::Round(($fullCap / $designCap) * 100, 1) } else { $null }
+                $statusDesc = switch ($status) {
+                    1 { "Other" }
+                    2 { "Unknown" }
+                    3 { "Fully Charged" }
+                    4 { "Low" }
+                    5 { "Critical" }
+                    6 { "Charging" }
+                    7 { "Charging and High" }
+                    8 { "Charging and Low" }
+                    9 { "Charging and Critical" }
+                    10 { "Undefined" }
+                    11 { "Partially Charged" }
+                    default { "Unknown" }
+                }
+                # Try to get temperature from Win32_TemperatureProbe (battery-related)
+                try {
+                    $tempProbes = Get-CimInstance -ClassName Win32_TemperatureProbe -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*battery*" -or $_.Description -like "*battery*" }
+                    if ($tempProbes) {
+                        $temp = ($tempProbes | Select-Object -First 1).CurrentReading
+                    }
+                    # If no battery-specific probe, try to get from BatteryStatus (if available)
+                    if (-not $temp) {
+                        try {
+                            $batteryStatus = Get-CimInstance -Namespace "root\wmi" -ClassName "BatteryStatus" -ErrorAction SilentlyContinue | Select-Object -First 1
+                            if ($batteryStatus -and $batteryStatus.Temperature) {
+                                $temp = $batteryStatus.Temperature
+                            }
+                        } catch { }
+                    }
+                } catch { }
+                Write-Output "$voltage|$chemistry|$designCap|$fullCap|$health|$statusDesc|$temp"
+            }
+            """
+            result = subprocess.run(
+                ['powershell', '-Command', ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return None
+            
+            parts = result.stdout.strip().split('|')
+            if len(parts) < 6:
+                return None
+            
+            extra_info = {}
+            
+            # Voltage (in mV, WMI returns in mW, but we need to check units)
+            if parts[0] and parts[0] != '':
+                try:
+                    voltage_mv = int(parts[0])  # WMI returns voltage in mV
+                    if voltage_mv > 0:
+                        extra_info['voltage'] = voltage_mv
+                except ValueError:
+                    pass
+            
+            # Chemistry (convert code to name)
+            if parts[1] and parts[1] != '':
+                try:
+                    chem_code = int(parts[1])
+                    chem_map = {
+                        1: "Other", 2: "Unknown", 3: "Lead Acid", 4: "Nickel Cadmium",
+                        5: "Nickel Metal Hydride", 6: "Lithium-ion", 7: "Zinc air",
+                        8: "Lithium Polymer"
+                    }
+                    extra_info['technology'] = chem_map.get(chem_code, f"Code {chem_code}")
+                except ValueError:
+                    if parts[1]:
+                        extra_info['technology'] = parts[1]
+            
+            # Design capacity and full charge capacity for health calculation
+            if parts[2] and parts[2] != '' and parts[3] and parts[3] != '':
+                try:
+                    design_cap = int(parts[2])
+                    full_cap = int(parts[3])
+                    if design_cap > 0 and full_cap > 0:
+                        health_pct = (full_cap / design_cap) * 100
+                        if health_pct < 80:
+                            extra_info['health'] = f"Degraded ({health_pct:.1f}%)"
+                        elif health_pct < 50:
+                            extra_info['health'] = f"Poor ({health_pct:.1f}%)"
+                        # Only show if degraded
+                except ValueError:
+                    pass
+            
+            # Battery status (for health warnings)
+            if len(parts) > 5 and parts[5] and parts[5] not in ['', 'Unknown', 'Fully Charged', 'Partially Charged', 'Charging']:
+                if 'health' not in extra_info:
+                    extra_info['health'] = parts[5]
+            
+            # Temperature (7th field, if available)
+            # Win32_TemperatureProbe returns in tenths of degrees Kelvin
+            # BatteryStatus might return in different units, but typically also in 0.1°K
+            if len(parts) > 6 and parts[6] and parts[6] != '':
+                try:
+                    temp_raw = int(parts[6])
+                    if temp_raw > 0:
+                        # Convert from 0.1°K to °C: (temp_raw / 10) - 273.15
+                        # But if value seems reasonable for Celsius (0-100 range), use as-is
+                        # Otherwise assume it's in 0.1°K
+                        if temp_raw < 1000:  # Likely already in 0.1°C format
+                            temp_c = temp_raw / 10.0
+                        else:  # Likely in 0.1°K format
+                            temp_c = (temp_raw / 10.0) - 273.15
+                        if 0 <= temp_c <= 100:  # Reasonable battery temperature range
+                            extra_info['temperature'] = int(temp_c * 10)  # Store in 0.1°C format for consistency
+                except (ValueError, TypeError):
+                    pass
+            
+            return extra_info if extra_info else None
+        except subprocess.TimeoutExpired:
+            return None
+        except Exception:
+            return None
+
     def _get_battery(self) -> tuple[float, bool]:
         batt = psutil.sensors_battery()
         if batt is None:
@@ -200,8 +361,97 @@ class BatteryMonitor:
             return 0.0, False
         return float(batt.percent), bool(batt.power_plugged)
 
+    def _get_phone_battery(self) -> tuple[float | None, bool | None, str | None, dict | None]:
+        """
+        Get phone battery info via ADB.
+        Returns: (level, is_charging, device_id, extra_info_dict)
+        extra_info_dict contains: voltage (mV), temperature (0.1°C), health, technology
+        """
+        try:
+            # Check for connected devices
+            result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return None, None, None, None
+            devices_lines = [line.strip() for line in result.stdout.strip().split('\n')[1:] if line.strip() and '\tdevice' in line]
+            if not devices_lines:
+                return None, None, None, None
+            device_id = devices_lines[0].split('\t')[0]
+            
+            # Get detailed battery info
+            result = subprocess.run(['adb', 'shell', 'dumpsys', 'battery'], capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return None, None, None, None
+                
+            lines = result.stdout.split('\n')
+            level = None
+            status = None
+            voltage = None
+            temperature = None
+            health = None
+            technology = None
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('level:'):
+                    level = int(line.split(':')[1].strip())
+                elif line.startswith('status:'):
+                    status_code = int(line.split(':')[1].strip())
+                    # Status codes: 1=Unknown, 2=Charging, 3=Discharging, 4=Not charging, 5=Full
+                    status = status_code == 2
+                elif line.startswith('voltage:'):
+                    voltage = int(line.split(':')[1].strip())  # in mV
+                elif line.startswith('temperature:'):
+                    temperature = int(line.split(':')[1].strip())  # in 0.1°C (divide by 10 for °C)
+                elif line.startswith('health:'):
+                    health_code = int(line.split(':')[1].strip())
+                    # Health codes: 1=Unknown, 2=Good, 3=Overheat, 4=Dead, 5=Over voltage, 6=Unspecified failure, 7=Cold
+                    health_map = {1: "Unknown", 2: "Good", 3: "Overheat", 4: "Dead", 5: "Over voltage", 6: "Failure", 7: "Cold"}
+                    health = health_map.get(health_code, f"Code {health_code}")
+                elif line.startswith('technology:'):
+                    technology = line.split(':')[1].strip()
+            
+            if level is not None and status is not None:
+                extra_info = {}
+                if voltage is not None:
+                    extra_info['voltage'] = voltage
+                if temperature is not None:
+                    extra_info['temperature'] = temperature
+                if health is not None:
+                    extra_info['health'] = health
+                if technology is not None:
+                    extra_info['technology'] = technology
+                return level, status, device_id, extra_info if extra_info else None
+            return None, None, None, None
+        except subprocess.TimeoutExpired:
+            return None, None, None, None
+        except FileNotFoundError:
+            # ADB not found in PATH
+            if not hasattr(self, '_adb_warned'):
+                print("Warning: ADB not found. Phone monitoring disabled. Install Android SDK Platform Tools.")
+                self._adb_warned = True
+            return None, None, None, None
+        except Exception:
+            return None, None, None, None
+
+    def _get_battery_info(self) -> tuple[float, bool, str, str | None, dict | None]:
+        phone_level, phone_charging, device_id, phone_extra = self._get_phone_battery()
+        if phone_level is not None and phone_charging:
+            return float(phone_level), True, 'phone', device_id, phone_extra
+        # laptop
+        batt = psutil.sensors_battery()
+        if batt is None:
+            print("Battery info not available on this system.")
+            return 0.0, False, 'laptop', None, None
+        # Get detailed laptop battery info
+        laptop_extra = self._get_laptop_battery_details()
+        return float(batt.percent), bool(batt.power_plugged), 'laptop', None, laptop_extra
+
+    def _get_battery(self) -> tuple[float, bool]:
+        percent, plugged, _, _, _ = self._get_battery_info()
+        return percent, plugged
+
     def _get_battery_percent(self) -> float:
-        percent, _ = self._get_battery()
+        percent, _, _, _, _ = self._get_battery_info()
         return percent
 
     def _beep(self) -> None:
@@ -239,9 +489,10 @@ class BatteryMonitor:
         print(f"Snoozed until {self._snooze_until.strftime('%H:%M:%S')}")
 
     def _handle_dismiss(self) -> None:
-        percent, plugged = self._get_battery()
+        percent, plugged, device, _, _ = self._get_battery_info()
         if plugged:
-            print("Cannot dismiss while charger is plugged in. Unplug the charger, then type 'dismiss' again.")
+            charger_type = "charging" if device == 'phone' else "charger"
+            print(f"Cannot dismiss while {charger_type} is plugged in. Unplug the {charger_type}, then type 'dismiss' again.")
             return
         self._dismissed_until_below = True
         self._alert_active = False
