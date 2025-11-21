@@ -6,6 +6,8 @@ Monitors your laptop and phone batteries every 30 seconds and beeps when they re
 - **Dual Device Support**: Monitors both laptop and phone batteries (phone via ADB)
 - **Detailed Battery Info**: Shows voltage, temperature, health status, and battery technology
 - **Beep alert** when battery reaches the threshold
+- **Windows Notification** when battery reaches the threshold
+- **Web Interface**: Real-time battery status display with percentage, difference, and time to 80%
 - Poll every 30 seconds (configurable)
 - Live update threshold via console command: `set 90`
 - Shows elapsed time to reach the threshold
@@ -40,6 +42,9 @@ python app.py 90 20
 # With flags (percent sign supported):
 python app.py -f 95% -n 85%
 # -n (new) overrides -f (from) if both provided
+
+# With web interface:
+python app.py --web
 ```
 
 ### While Running
@@ -96,6 +101,23 @@ When the threshold is reached, total time and min/max Δ1m are shown:
 [14:15:12] Laptop Battery: 80% | Plugged | Threshold: 80% | Time to reach: 8m 0s | Δ1m min: +0.8% max: +1.3%
 ```
 
+### Web Interface
+
+The application includes a web interface that displays real-time battery information:
+
+- Battery percentage (font size 50)
+- Difference from start percentage
+- Estimated time to reach 80% (font size 20)
+- Windows notification when battery reaches threshold
+
+To start the web interface, use the `--web` flag:
+
+```bash
+python app.py --web
+```
+
+The web interface will be available at http://127.0.0.1:5000 and will automatically open in your default browser.
+
 ### Configuration File
 `battery_config.json`
 
@@ -141,5 +163,4 @@ A: Temperature availability depends on your laptop's hardware and drivers. The a
 **Q: What does "Health: Degraded" mean?**
 
 A: For laptops, health is calculated from design capacity vs. full charge capacity. If the battery can only hold less than 80% of its original capacity, it's marked as degraded. For phones, health status comes directly from the Android system.
-
 

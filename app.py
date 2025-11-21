@@ -9,10 +9,21 @@ import argparse
 
 import psutil
 
+# Flask imports
+from flask import Flask, render_template_string
+import webbrowser
+
 try:
     import winsound
 except ImportError:  # Fallback (non-Windows) – single bell
     winsound = None
+
+# Windows notification imports
+try:
+    from plyer import notification
+except ImportError:
+    notification = None
+    print("Warning: plyer not installed. Windows notifications will not be available.")
 
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "battery_config.json")
@@ -228,7 +239,7 @@ class BatteryMonitor:
         """
         try:
             # Use PowerShell to query WMI for battery details
-            ps_cmd = """
+            ps_cmd = r"""
             $battery = Get-CimInstance -ClassName Win32_Battery | Select-Object -First 1
             $temp = $null
             if ($battery) {
@@ -482,6 +493,17 @@ class BatteryMonitor:
         # 5 beeps, then present options
         self._beep_times(5)
         print("Battery reached threshold. Type 'snooze' to mute for 1 minute or 'dismiss' (requires unplugging charger).")
+        
+        # Send Windows notification when battery reaches threshold
+        if notification:
+            try:
+                notification.notify(
+                    title="Battery Monitor",
+                    message=f"Battery reached {self.threshold_percent}% threshold!",
+                    timeout=10
+                )
+            except Exception as e:
+                print(f"Failed to send notification: {e}")
 
     def _handle_snooze(self) -> None:
         self._snooze_until = datetime.now() + timedelta(minutes=1)
@@ -547,15 +569,134 @@ def parse_percent_arg(value: str) -> int:
     return n
 
 
+def create_flask_app(monitor):
+    """Create Flask app to display battery information"""
+    app = Flask(__name__)
+    
+    @app.route('/')
+    def battery_status():
+        # Get current battery information
+        percent, plugged, device, device_id, extra_info = monitor._get_battery_info()
+        now_str = datetime.now().strftime('%H:%M:%S')
+        
+        # Calculate battery difference and time to 80%
+        start_percent = monitor._start_percent or percent
+        current_percent = percent
+        
+        # Calculate difference from start
+        difference = current_percent - start_percent
+        
+        # Calculate estimated time to 80%
+        time_to_80 = "N/A"
+        if monitor._reached_time is not None:
+            # Already reached 80%
+            delta = monitor._reached_time - monitor._start_time
+            time_to_80 = format_timedelta(delta)
+        elif difference > 0 and monitor._start_time is not None:
+            # Still charging, estimate time to 80%
+            elapsed_time = datetime.now() - monitor._start_time
+            elapsed_seconds = elapsed_time.total_seconds()
+            
+            if difference > 0:
+                # Calculate rate of charging per second
+                rate_per_second = difference / elapsed_seconds if elapsed_seconds > 0 else 0
+                
+                # Calculate remaining percent to 80
+                remaining_to_80 = 80 - current_percent
+                
+                if rate_per_second > 0 and remaining_to_80 > 0:
+                    # Estimate seconds to reach 80%
+                    estimated_seconds = remaining_to_80 / rate_per_second
+                    hours = int(estimated_seconds // 3600)
+                    minutes = int((estimated_seconds % 3600) // 60)
+                    seconds = int(estimated_seconds % 60)
+                    
+                    if hours > 0:
+                        time_to_80 = f"{hours}h {minutes}m {seconds}s"
+                    else:
+                        time_to_80 = f"{minutes}m {seconds}s"
+        
+        # HTML template with styling for requested layout
+        html_template = '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Battery Monitor</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    background-color: #f0f0f0;
+                }
+                .container {
+                    text-align: center;
+                }
+                .battery-percent {
+                    font-size: 50px;
+                    font-weight: bold;
+                    color: #333;
+                }
+                .difference {
+                    font-size: 20px;
+                    color: #666;
+                    margin-top: 20px;
+                }
+                .time-to-80 {
+                    font-size: 20px;
+                    color: #666;
+                    margin-top: 10px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="battery-percent">{{ battery_percent }}%</div>
+                <div class="difference">Difference: {{ difference }}%</div>
+                <div class="time-to-80">Time to 80%: {{ time_to_80 }}</div>
+            </div>
+        </body>
+        </html>
+        '''
+        
+        return render_template_string(html_template, 
+                                   battery_percent=f"{percent:.0f}",
+                                   difference=f"{difference:+.1f}",
+                                   time_to_80=time_to_80)
+    
+    return app
+
+def start_flask_server(monitor, host='127.0.0.1', port=5000):
+    """Start Flask server in a separate thread"""
+    app = create_flask_app(monitor)
+    
+    def run_app():
+        app.run(host=host, port=port, debug=False)
+    
+    flask_thread = threading.Thread(target=run_app, daemon=True)
+    flask_thread.start()
+    
+    # Give the server a moment to start
+    time.sleep(1)
+    
+    # Open browser to the server
+    webbrowser.open(f'http://{host}:{port}')
+    
+    return flask_thread
+
 def main() -> None:
     default_threshold, default_interval = load_config()
 
     parser = argparse.ArgumentParser(description="Battery monitor with threshold alert")
     # Flags requested: -f 95% -n 85%
-    parser.add_argument("threshold", nargs="?", type=parse_percent_arg, help="threshold percent (e.g. 95 or 95%)")
+    parser.add_argument("threshold", nargs="?", type=parse_percent_arg, help="threshold percent (e.g. 95 or 95 percent)")
     parser.add_argument("interval", nargs="?", type=int, help="poll interval seconds (e.g. 30)")
-    parser.add_argument("-f", "--current-threshold", dest="current_threshold", type=parse_percent_arg, help="current threshold value (e.g. 95%)")
-    parser.add_argument("-n", "--new-threshold", dest="new_threshold", type=parse_percent_arg, help="new threshold value to use (e.g. 85%)")
+    parser.add_argument("-f", "--current-threshold", dest="current_threshold", type=parse_percent_arg, help="current threshold value (e.g. 95 percent)")
+    parser.add_argument("-n", "--new-threshold", dest="new_threshold", type=parse_percent_arg, help="new threshold value to use (e.g. 85 percent)")
+    parser.add_argument("--web", action="store_true", help="Start web interface")
 
     args = parser.parse_args()
 
@@ -573,6 +714,12 @@ def main() -> None:
     interval = args.interval if args.interval is not None else default_interval
 
     monitor = BatteryMonitor(threshold, interval)
+    
+    # Start Flask server if requested
+    if args.web:
+        flask_thread = start_flask_server(monitor)
+        print(f"Web interface started at http://127.0.0.1:5000")
+    
     monitor.start()
 
 
