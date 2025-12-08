@@ -696,7 +696,7 @@ def main() -> None:
     parser.add_argument("interval", nargs="?", type=int, help="poll interval seconds (e.g. 30)")
     parser.add_argument("-f", "--current-threshold", dest="current_threshold", type=parse_percent_arg, help="current threshold value (e.g. 95 percent)")
     parser.add_argument("-n", "--new-threshold", dest="new_threshold", type=parse_percent_arg, help="new threshold value to use (e.g. 85 percent)")
-    parser.add_argument("--web", action="store_true", help="Start web interface")
+    parser.add_argument("--no-web", action="store_true", help="Run without web dashboard (CLI only)")
 
     args = parser.parse_args()
 
@@ -715,10 +715,10 @@ def main() -> None:
 
     monitor = BatteryMonitor(threshold, interval)
     
-    # Start Flask server if requested
-    if args.web:
-        flask_thread = start_flask_server(monitor)
-        print(f"Web interface started at http://127.0.0.1:5000")
+    # Start Flask server by default unless explicitly disabled
+    if not args.no_web:
+        start_flask_server(monitor)
+        print("Web interface started at http://127.0.0.1:5000")
     
     monitor.start()
 
