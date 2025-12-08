@@ -223,6 +223,15 @@ class BatteryMonitor:
                     min_diff = min(self._per_minute_diffs)
                     max_diff = max(self._per_minute_diffs)
                     line += f" | Δ1m min: {min_diff:+.1f}% max: {max_diff:+.1f}%"
+            
+            # Show estimated time to charge (to threshold or 100%)
+            if plugged:
+                estimated_time = self._estimate_charge_time(percent, plugged)
+                if estimated_time:
+                    if percent < self.threshold_percent:
+                        line += f" | Est. to {self.threshold_percent}%: {estimated_time}"
+                    else:
+                        line += f" | Est. to 100%: {estimated_time}"
 
             print(line)
 
@@ -465,6 +474,56 @@ class BatteryMonitor:
         percent, _, _, _, _ = self._get_battery_info()
         return percent
 
+    def _estimate_charge_time(self, current_percent: float, plugged: bool) -> str | None:
+        """
+        Estimate time to charge to threshold or 100%.
+        Returns formatted time string or None if cannot estimate.
+        """
+        if not plugged or self._start_time is None or self._start_percent is None:
+            return None
+        
+        # Calculate charging rate
+        elapsed_time = datetime.now() - self._start_time
+        elapsed_seconds = elapsed_time.total_seconds()
+        
+        if elapsed_seconds < 10:  # Need at least 10 seconds of data
+            return None
+        
+        # Use per-minute diffs if available (more accurate)
+        if self._per_minute_diffs:
+            # Average per-minute change
+            avg_per_minute = sum(self._per_minute_diffs) / len(self._per_minute_diffs)
+            if avg_per_minute <= 0:  # Not charging or discharging
+                return None
+            rate_per_second = avg_per_minute / 60.0
+        else:
+            # Fallback to overall rate
+            difference = current_percent - self._start_percent
+            if difference <= 0:
+                return None
+            rate_per_second = difference / elapsed_seconds
+        
+        if rate_per_second <= 0:
+            return None
+        
+        # Determine target: threshold if below, 100% if above
+        if current_percent < self.threshold_percent:
+            target_percent = self.threshold_percent
+            target_name = f"{self.threshold_percent}%"
+        else:
+            target_percent = 100.0
+            target_name = "100%"
+        
+        remaining_percent = target_percent - current_percent
+        if remaining_percent <= 0:
+            return None
+        
+        # Calculate estimated seconds
+        estimated_seconds = remaining_percent / rate_per_second
+        
+        # Format time
+        return format_timedelta(timedelta(seconds=int(estimated_seconds)))
+
     def _beep(self) -> None:
         try:
             if winsound is not None:
@@ -579,42 +638,30 @@ def create_flask_app(monitor):
         percent, plugged, device, device_id, extra_info = monitor._get_battery_info()
         now_str = datetime.now().strftime('%H:%M:%S')
         
-        # Calculate battery difference and time to 80%
+        # Calculate battery difference
         start_percent = monitor._start_percent or percent
         current_percent = percent
         
         # Calculate difference from start
         difference = current_percent - start_percent
         
-        # Calculate estimated time to 80%
-        time_to_80 = "N/A"
-        if monitor._reached_time is not None:
-            # Already reached 80%
+        # Calculate estimated time to charge (to threshold or 100%)
+        estimated_charge_time = monitor._estimate_charge_time(percent, plugged)
+        charge_time_label = "N/A"
+        charge_time_value = "N/A"
+        
+        if estimated_charge_time:
+            if percent < monitor.threshold_percent:
+                charge_time_label = f"Time to {monitor.threshold_percent}%"
+                charge_time_value = estimated_charge_time
+            else:
+                charge_time_label = "Time to 100%"
+                charge_time_value = estimated_charge_time
+        elif monitor._reached_time is not None:
+            # Already reached threshold
             delta = monitor._reached_time - monitor._start_time
-            time_to_80 = format_timedelta(delta)
-        elif difference > 0 and monitor._start_time is not None:
-            # Still charging, estimate time to 80%
-            elapsed_time = datetime.now() - monitor._start_time
-            elapsed_seconds = elapsed_time.total_seconds()
-            
-            if difference > 0:
-                # Calculate rate of charging per second
-                rate_per_second = difference / elapsed_seconds if elapsed_seconds > 0 else 0
-                
-                # Calculate remaining percent to 80
-                remaining_to_80 = 80 - current_percent
-                
-                if rate_per_second > 0 and remaining_to_80 > 0:
-                    # Estimate seconds to reach 80%
-                    estimated_seconds = remaining_to_80 / rate_per_second
-                    hours = int(estimated_seconds // 3600)
-                    minutes = int((estimated_seconds % 3600) // 60)
-                    seconds = int(estimated_seconds % 60)
-                    
-                    if hours > 0:
-                        time_to_80 = f"{hours}h {minutes}m {seconds}s"
-                    else:
-                        time_to_80 = f"{minutes}m {seconds}s"
+            charge_time_label = f"Time to reach {monitor.threshold_percent}%"
+            charge_time_value = format_timedelta(delta)
         
         # HTML template with styling for requested layout
         html_template = '''
@@ -645,7 +692,7 @@ def create_flask_app(monitor):
                     color: #666;
                     margin-top: 20px;
                 }
-                .time-to-80 {
+                .charge-time {
                     font-size: 20px;
                     color: #666;
                     margin-top: 10px;
@@ -656,7 +703,7 @@ def create_flask_app(monitor):
             <div class="container">
                 <div class="battery-percent">{{ battery_percent }}%</div>
                 <div class="difference">Difference: {{ difference }}%</div>
-                <div class="time-to-80">Time to 80%: {{ time_to_80 }}</div>
+                <div class="charge-time">{{ charge_time_label }}: {{ charge_time_value }}</div>
             </div>
         </body>
         </html>
@@ -665,7 +712,8 @@ def create_flask_app(monitor):
         return render_template_string(html_template, 
                                    battery_percent=f"{percent:.0f}",
                                    difference=f"{difference:+.1f}",
-                                   time_to_80=time_to_80)
+                                   charge_time_label=charge_time_label,
+                                   charge_time_value=charge_time_value)
     
     return app
 
