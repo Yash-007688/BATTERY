@@ -677,7 +677,8 @@ def create_flask_app(monitor):
                     align-items: center;
                     height: 100vh;
                     margin: 0;
-                    background-color: #f0f0f0;
+                    background-color: #1a1a1a;
+                    color: #e0e0e0;
                 }
                 .container {
                     text-align: center;
@@ -685,16 +686,16 @@ def create_flask_app(monitor):
                 .battery-percent {
                     font-size: 50px;
                     font-weight: bold;
-                    color: #333;
+                    color: #ffffff;
                 }
                 .difference {
                     font-size: 20px;
-                    color: #666;
+                    color: #b0b0b0;
                     margin-top: 20px;
                 }
                 .charge-time {
                     font-size: 20px;
-                    color: #666;
+                    color: #b0b0b0;
                     margin-top: 10px;
                 }
             </style>
