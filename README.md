@@ -13,6 +13,7 @@ A comprehensive, feature-rich battery monitoring application for Windows with re
 - **Real-time Tracking**: Battery percentage, voltage, temperature, and health status
 - **Smart Alerts**: Customizable threshold notifications with snooze/dismiss
 - **Variable Threshold**: Set custom threshold via command line (e.g., `-t 80` or `-t 100`)
+- **Custom Polling Interval**: Set custom polling interval in seconds via command line (e.g., `-s 60` for 1 minute or `-s 3600` for 1 hour)
 - **Charge Cycle Tracking**: Automatic detection and logging of charge cycles
 - **1-Minute Delta Tracking**: Monitor charging/discharging rates
 
@@ -137,6 +138,14 @@ Set a specific battery threshold using the `-t` flag. This allows you to customi
 
 ### Discharge Calculation Mode
 Calculate battery discharge rate without showing regular logs using the `-d` flag. This mode only logs discharge rate information every 10-15 minutes when the device is discharging (not plugged in).
+
+### Time Interval Setting Mode
+Set a custom polling interval in seconds using the `-s` flag. This allows you to control how frequently the application checks the battery status. Examples:
+
+- `python app.py -s 10` - Poll every 10 seconds
+- `python app.py -s 60` - Poll every 60 seconds (1 minute)
+- `python app.py -s 3600` - Poll every 3600 seconds (1 hour)
+- `python app.py --seconds 120` - Alternative long form for 2 minutes
 
 ### Command Line Options
 
