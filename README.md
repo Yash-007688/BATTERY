@@ -103,6 +103,8 @@ python app_enhanced.py --web --tray
 python app.py                    # opens http://127.0.0.1:5000 by default
 python app.py --no-web           # CLI only if you don't want the dashboard
 python app.py -t 90              # Set threshold to 90%
+python app.py -s 60              # Poll every 60 seconds (1 minute)
+python app.py -s 3600            # Poll every 3600 seconds (1 hour)
 python app.py -d                  # Run in discharge calculation mode
 python app.py --discharge-mode   # Alternative form for discharge mode
 ```
@@ -164,6 +166,7 @@ Positional Arguments:
 
 Options:
   -t, --threshold        Set battery threshold percentage (e.g., -t 90)
+  -s, --seconds          Poll interval in seconds (e.g., -s 60 for 1 minute, -s 3600 for 1 hour)
   -d, --discharge-mode   Run in discharge calculation mode - calculates
                          discharge rate without showing regular logs
   --no-web               Run without web dashboard (CLI only)

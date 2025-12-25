@@ -855,6 +855,7 @@ def main() -> None:
     parser.add_argument("-f", "--current-threshold", dest="current_threshold", type=parse_percent_arg, help="current threshold value (e.g. 95 percent)")
     parser.add_argument("-n", "--new-threshold", dest="new_threshold", type=parse_percent_arg, help="new threshold value to use (e.g. 85 percent)")
     parser.add_argument("-t", "--threshold", dest="threshold_arg", type=parse_percent_arg, help="threshold percent for battery alert (e.g. 80 or 100)")
+    parser.add_argument("-s", "--seconds", dest="seconds_arg", type=int, help="poll interval in seconds (e.g. 60 for 1 minute, 3600 for 1 hour)")
     parser.add_argument("-d", "--discharge-mode", dest="discharge_mode", action="store_true", help="Run in discharge calculation mode - calculates discharge rate without showing regular logs")
     parser.add_argument("--no-web", action="store_true", help="Run without web dashboard (CLI only)")
     parser.add_argument(
@@ -889,7 +890,12 @@ def main() -> None:
         )
     )
 
-    interval = args.interval if args.interval is not None else default_interval
+    # Determine interval precedence: seconds_arg (-s) > positional interval > config
+    interval = (
+        args.seconds_arg
+        if args.seconds_arg is not None
+        else (args.interval if args.interval is not None else default_interval)
+    )
 
     monitor = BatteryMonitor(threshold, interval)
     
