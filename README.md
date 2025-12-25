@@ -12,6 +12,7 @@ A comprehensive, feature-rich battery monitoring application for Windows with re
 - **Dual Device Support**: Monitor both laptop and Android phones (via ADB)
 - **Real-time Tracking**: Battery percentage, voltage, temperature, and health status
 - **Smart Alerts**: Customizable threshold notifications with snooze/dismiss
+- **Variable Threshold**: Set custom threshold via command line (e.g., `-t 80` or `-t 100`)
 - **Charge Cycle Tracking**: Automatic detection and logging of charge cycles
 - **1-Minute Delta Tracking**: Monitor charging/discharging rates
 
@@ -126,7 +127,11 @@ The application provides multiple modes to suit different needs:
 Monitor battery with threshold alerts and web dashboard.
 
 ### Threshold Setting Mode
-Set a specific battery threshold using the `-t` flag.
+Set a specific battery threshold using the `-t` flag. This allows you to customize the battery percentage at which the alert will trigger without modifying the configuration file. Examples:
+
+- `python app.py -t 80` - Set threshold to 80%
+- `python app.py -t 100` - Set threshold to 100%
+- `python app.py --threshold 95` - Alternative long form
 
 ### Discharge Calculation Mode
 Calculate battery discharge rate without showing regular logs using the `-d` flag. This mode only logs discharge rate information every 10-15 minutes when the device is discharging (not plugged in).
