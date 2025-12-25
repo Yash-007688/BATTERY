@@ -99,8 +99,11 @@ python app_enhanced.py --web --tray
 
 **Lightweight original script (`app.py`)** – starts CLI + web dashboard:
 ```bash
-python app.py           # opens http://127.0.0.1:5000 by default
-python app.py --no-web  # CLI only if you don't want the dashboard
+python app.py                    # opens http://127.0.0.1:5000 by default
+python app.py --no-web           # CLI only if you don't want the dashboard
+python app.py -t 90              # Set threshold to 90%
+python app.py -d                  # Run in discharge calculation mode
+python app.py --discharge-mode   # Alternative form for discharge mode
 ```
 
 **Install auto-start**:
@@ -117,8 +120,20 @@ On first run, the application will:
 
 ## 📖 Usage
 
+The application provides multiple modes to suit different needs:
+
+### Standard Mode
+Monitor battery with threshold alerts and web dashboard.
+
+### Threshold Setting Mode
+Set a specific battery threshold using the `-t` flag.
+
+### Discharge Calculation Mode
+Calculate battery discharge rate without showing regular logs using the `-d` flag. This mode only logs discharge rate information every 10-15 minutes when the device is discharging (not plugged in).
+
 ### Command Line Options
 
+**For app_enhanced.py**:
 ```bash
 python app_enhanced.py [threshold] [interval] [options]
 
@@ -132,6 +147,24 @@ Options:
   --profile NAME         Use specific profile
   --install-startup      Install Windows auto-start task
   --remove-startup       Remove Windows auto-start task
+```
+
+**For app.py (new options)**:
+```bash
+python app.py [threshold] [interval] [options]
+
+Positional Arguments:
+  threshold              Battery threshold percentage (1-100)
+  interval               Poll interval in seconds
+
+Options:
+  -t, --threshold        Set battery threshold percentage (e.g., -t 90)
+  -d, --discharge-mode   Run in discharge calculation mode - calculates
+                         discharge rate without showing regular logs
+  --no-web               Run without web dashboard (CLI only)
+  -f, --current-threshold Current threshold value
+  -n, --new-threshold    New threshold value to use
+  -a, --airpods-battery  Print battery percent for AirPods and exit
 ```
 
 ### Console Commands

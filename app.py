@@ -27,6 +27,12 @@ except ImportError:
 
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "battery_config.json")
+BULLET_KEYS = [
+    # Common Windows battery properties exposed for Bluetooth audio
+    "System.Devices.BatteryLife.Percent",
+    "System.Devices.BatteryLifePercent",
+    "DEVPKEY_Bluetooth_BatteryLevel",
+]
 
 
 class BatteryMonitor:
@@ -134,6 +140,51 @@ class BatteryMonitor:
         # Persist to config for next run
         self._save_config()
 
+    def start_discharge_calculation(self) -> None:
+        """Start monitoring to calculate discharge rate without showing regular logs"""
+        self._start_time = datetime.now()
+        self._start_percent = self._get_battery_percent()
+        print(
+            f"Discharge calculation mode started at {self._start_time.strftime('%H:%M:%S')}. "
+            f"Initial battery: {self._start_percent:.2f}%"
+        )
+        print("Calculating discharge rate every 10-15 minutes...")
+        
+        # Store initial values for calculation
+        last_calc_time = datetime.now()
+        last_calc_percent = self._start_percent
+        
+        try:
+            while not self._stop_event.is_set():
+                percent, plugged, device, device_id, extra_info = self._get_battery_info()
+                
+                # Only calculate discharge when not plugged in
+                if not plugged:
+                    current_time = datetime.now()
+                    time_diff_minutes = (current_time - last_calc_time).total_seconds() / 60
+                    
+                    # Calculate and log discharge rate every 10-15 minutes
+                    if time_diff_minutes >= 10:  # At least 10 minutes between logs
+                        percent_diff = last_calc_percent - percent  # Discharge is negative
+                        discharge_rate = percent_diff / time_diff_minutes if time_diff_minutes > 0 else 0
+                        
+                        print(f"[{current_time.strftime('%H:%M:%S')}] Discharge Rate: {discharge_rate:.3f}%/min ({percent_diff:+.2f}% over {time_diff_minutes:.1f}min)")
+                        
+                        # Update for next calculation
+                        last_calc_time = current_time
+                        last_calc_percent = percent
+                
+                # Sleep for 30 seconds before next check
+                remaining = self.poll_interval_seconds
+                while remaining > 0 and not self._stop_event.is_set():
+                    time.sleep(min(0.5, remaining))
+                    remaining -= 0.5
+                
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.stop()
+
     def _monitor_loop(self) -> None:
         while not self._stop_event.is_set():
             percent, plugged, device, device_id, extra_info = self._get_battery_info()
@@ -195,7 +246,7 @@ class BatteryMonitor:
                         self._trigger_alert()
                         self._alert_active = True
                         self._alerted = True
-                    line += " | Reached threshold! (type 'snooze' or 'dismiss')"
+                    line += " | Threshold reached! (type 'snooze' or 'dismiss')"
 
             # Every full minute since last anchor, compute percent difference and record
             now_dt = datetime.now()
@@ -603,7 +654,7 @@ def format_timedelta(delta: timedelta) -> str:
 
 
 def load_config() -> tuple[int, int]:
-    threshold = 80
+    threshold = 100
     interval = 30
     if os.path.isfile(CONFIG_PATH):
         try:
@@ -614,6 +665,64 @@ def load_config() -> tuple[int, int]:
         except Exception as e:
             print(f"Warning: Failed to read config, using defaults. {e}")
     return threshold, interval
+
+
+def get_airpods_battery(device_name: str = "AirPods") -> tuple[float | None, str]:
+    """
+    Try to read AirPods battery percentage from Windows PnP device properties.
+    Returns (percent, message). percent is None when unavailable.
+    """
+    if sys.platform != "win32":
+        return None, "AirPods battery lookup is only supported on Windows."
+
+    # PowerShell script tries several common battery property keys
+    props = ";".join(BULLET_KEYS)
+    ps_cmd = fr"""
+$device = Get-PnpDevice -Class Bluetooth | Where-Object {{ $_.FriendlyName -like "*{device_name}*" -and $_.Status -eq "OK" }} | Select-Object -First 1
+if (-not $device) {{
+    Write-Output "NOT_FOUND"
+    exit 3
+}}
+$keys = "{props}".Split(";")
+foreach ($key in $keys) {{
+    try {{
+        $prop = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName $key -ErrorAction SilentlyContinue
+        if ($prop -and $prop.Data -ne $null) {{
+            Write-Output $prop.Data
+            exit 0
+        }}
+    }} catch {{}}
+}}
+Write-Output "NO_BATTERY_DATA"
+exit 4
+"""
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except FileNotFoundError:
+        return None, "PowerShell not available to query AirPods battery."
+    except subprocess.TimeoutExpired:
+        return None, "Timed out while reading AirPods battery."
+
+    stdout = (result.stdout or "").strip()
+    if stdout == "NOT_FOUND":
+        return None, f'No Bluetooth device found matching "{device_name}".'
+    if stdout == "NO_BATTERY_DATA":
+        return None, "AirPods found but did not report a battery percentage."
+
+    try:
+        value = float(stdout)
+        if value <= 1:  # Some drivers return 0-1
+            value *= 100
+        if 0 <= value <= 100:
+            return value, f"AirPods battery: {value:.0f}%"
+        return None, f"Unexpected AirPods battery value: {stdout}"
+    except ValueError:
+        return None, f"Could not parse AirPods battery output: {stdout}"
 
 
 def parse_percent_arg(value: str) -> int:
@@ -745,18 +854,38 @@ def main() -> None:
     parser.add_argument("interval", nargs="?", type=int, help="poll interval seconds (e.g. 30)")
     parser.add_argument("-f", "--current-threshold", dest="current_threshold", type=parse_percent_arg, help="current threshold value (e.g. 95 percent)")
     parser.add_argument("-n", "--new-threshold", dest="new_threshold", type=parse_percent_arg, help="new threshold value to use (e.g. 85 percent)")
+    parser.add_argument("-t", "--threshold", dest="threshold_arg", type=parse_percent_arg, help="threshold percent for battery alert (e.g. 80 or 100)")
+    parser.add_argument("-d", "--discharge-mode", dest="discharge_mode", action="store_true", help="Run in discharge calculation mode - calculates discharge rate without showing regular logs")
     parser.add_argument("--no-web", action="store_true", help="Run without web dashboard (CLI only)")
+    parser.add_argument(
+        "-a",
+        "--airpods-battery",
+        nargs="?",
+        const="AirPods",
+        metavar="NAME",
+        help="Print battery percent for AirPods (optionally pass device name) and exit",
+    )
 
     args = parser.parse_args()
 
-    # Determine threshold precedence: new_threshold (-n) > current_threshold (-f) > positional > config
+    # AirPods battery one-shot mode
+    if args.airpods_battery is not None:
+        percent, message = get_airpods_battery(args.airpods_battery or "AirPods")
+        print(message)
+        sys.exit(0 if percent is not None else 1)
+
+    # Determine threshold precedence: threshold_arg (-t) > new_threshold (-n) > current_threshold (-f) > positional > config
     threshold = (
-        args.new_threshold
-        if args.new_threshold is not None
+        args.threshold_arg
+        if args.threshold_arg is not None
         else (
-            args.current_threshold
-            if args.current_threshold is not None
-            else (args.threshold if args.threshold is not None else default_threshold)
+            args.new_threshold
+            if args.new_threshold is not None
+            else (
+                args.current_threshold
+                if args.current_threshold is not None
+                else (args.threshold if args.threshold is not None else default_threshold)
+            )
         )
     )
 
@@ -764,12 +893,17 @@ def main() -> None:
 
     monitor = BatteryMonitor(threshold, interval)
     
-    # Start Flask server by default unless explicitly disabled
-    if not args.no_web:
-        start_flask_server(monitor)
-        print("Web interface started at http://127.0.0.1:5000")
-    
-    monitor.start()
+    # Start in discharge calculation mode if requested
+    if args.discharge_mode:
+        # Don't start web server in discharge mode
+        monitor.start_discharge_calculation()
+    else:
+        # Start Flask server by default unless explicitly disabled
+        if not args.no_web:
+            start_flask_server(monitor)
+            print("Web interface started at http://127.0.0.1:5000")
+        
+        monitor.start()
 
 
 if __name__ == "__main__":
