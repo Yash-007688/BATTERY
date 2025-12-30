@@ -825,6 +825,12 @@ def create_flask_app(monitor):
                                    charge_time_label=charge_time_label,
                                    charge_time_value=charge_time_value)
     
+    @app.route('/favicon.ico')
+    def favicon():
+        # Return an empty response with 204 No Content to prevent 404
+        from flask import Response
+        return Response(status=204)
+    
     return app
 
 def start_flask_server(monitor, host='127.0.0.1', port=5000):
