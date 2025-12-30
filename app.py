@@ -51,6 +51,8 @@ class BatteryMonitor:
         self._snooze_until: datetime | None = None
         self._dismissed_until_below: bool = False
         self._last_below_threshold: bool = True
+        self._phone_printed: bool = False  # Thread-safe instance variable instead of dynamic attribute
+        self._adb_warned: bool = False    # Thread-safe instance variable instead of dynamic attribute
 
         # Per-minute change tracking (percent-based; voltage not available via psutil)
         self._minute_anchor_time: datetime | None = None
@@ -190,12 +192,12 @@ class BatteryMonitor:
             percent, plugged, device, device_id, extra_info = self._get_battery_info()
             now_str = datetime.now().strftime('%H:%M:%S')
 
-            if device == 'phone' and device_id and not hasattr(self, '_phone_printed'):
+            if device == 'phone' and device_id and not self._phone_printed:
                 tech_info = f" ({extra_info.get('technology', 'Unknown')})" if extra_info and 'technology' in extra_info else ""
                 print(f"Phone connected: {device_id}{tech_info}")
                 self._phone_printed = True
-            elif device == 'laptop' and hasattr(self, '_phone_printed'):
-                delattr(self, '_phone_printed')
+            elif device == 'laptop' and self._phone_printed:
+                self._phone_printed = False
 
             status = "Charging" if device == 'phone' else ("Plugged" if plugged else "On battery")
             line = f"[{now_str}] {device.capitalize()} Battery: {percent:.0f}% | {status} | Threshold: {self.threshold_percent}%"
@@ -266,6 +268,7 @@ class BatteryMonitor:
                     self._minute_anchor_percent = percent
                     elapsed -= 60.0
 
+            # Add time to reach information if both times are available
             if self._start_time is not None and self._reached_time is not None:
                 delta = self._reached_time - self._start_time
                 line += f" | Time to reach: {format_timedelta(delta)}"
@@ -387,10 +390,11 @@ class BatteryMonitor:
                     full_cap = int(parts[3])
                     if design_cap > 0 and full_cap > 0:
                         health_pct = (full_cap / design_cap) * 100
-                        if health_pct < 80:
-                            extra_info['health'] = f"Degraded ({health_pct:.1f}%)"
-                        elif health_pct < 50:
+                        # Check <50 before <80 to ensure conditions are reachable
+                        if health_pct < 50:
                             extra_info['health'] = f"Poor ({health_pct:.1f}%)"
+                        elif health_pct < 80:
+                            extra_info['health'] = f"Degraded ({health_pct:.1f}%)"
                         # Only show if degraded
                 except ValueError:
                     pass
@@ -432,7 +436,7 @@ class BatteryMonitor:
             return 0.0, False
         return float(batt.percent), bool(batt.power_plugged)
 
-    def _get_phone_battery(self) -> tuple[float | None, bool | None, str | None, dict | None]:
+    def _get_phone_battery(self, device_id: str = None) -> tuple[float | None, bool | None, str | None, dict | None]:
         """
         Get phone battery info via ADB.
         Returns: (level, is_charging, device_id, extra_info_dict)
@@ -448,8 +452,8 @@ class BatteryMonitor:
                 return None, None, None, None
             device_id = devices_lines[0].split('\t')[0]
             
-            # Get detailed battery info
-            result = subprocess.run(['adb', 'shell', 'dumpsys', 'battery'], capture_output=True, text=True, timeout=5)
+            # Get detailed battery info - include device_id in the command
+            result = subprocess.run(['adb', 'shell', 'dumpsys', 'battery', '-s', device_id], capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
                 return None, None, None, None
                 
@@ -497,7 +501,7 @@ class BatteryMonitor:
             return None, None, None, None
         except FileNotFoundError:
             # ADB not found in PATH
-            if not hasattr(self, '_adb_warned'):
+            if not self._adb_warned:
                 print("Warning: ADB not found. Phone monitoring disabled. Install Android SDK Platform Tools.")
                 self._adb_warned = True
             return None, None, None, None
@@ -516,10 +520,6 @@ class BatteryMonitor:
         # Get detailed laptop battery info
         laptop_extra = self._get_laptop_battery_details()
         return float(batt.percent), bool(batt.power_plugged), 'laptop', None, laptop_extra
-
-    def _get_battery(self) -> tuple[float, bool]:
-        percent, plugged, _, _, _ = self._get_battery_info()
-        return percent, plugged
 
     def _get_battery_percent(self) -> float:
         percent, _, _, _, _ = self._get_battery_info()
@@ -766,7 +766,7 @@ def create_flask_app(monitor):
             else:
                 charge_time_label = "Time to 100%"
                 charge_time_value = estimated_charge_time
-        elif monitor._reached_time is not None:
+        elif monitor._reached_time is not None and monitor._start_time is not None:
             # Already reached threshold
             delta = monitor._reached_time - monitor._start_time
             charge_time_label = f"Time to reach {monitor.threshold_percent}%"
@@ -833,12 +833,19 @@ def create_flask_app(monitor):
     
     return app
 
+
 def start_flask_server(monitor, host='127.0.0.1', port=5000):
     """Start Flask server in a separate thread"""
     app = create_flask_app(monitor)
     
     def run_app():
-        app.run(host=host, port=port, debug=False)
+        try:
+            app.run(host=host, port=port, debug=False)
+        except OSError as e:
+            if e.errno == 48:  # Address already in use
+                print(f"Error: Port {port} is already in use. Please choose a different port.")
+            else:
+                print(f"Error starting Flask server: {e}")
     
     flask_thread = threading.Thread(target=run_app, daemon=True)
     flask_thread.start()
@@ -850,6 +857,7 @@ def start_flask_server(monitor, host='127.0.0.1', port=5000):
     webbrowser.open(f'http://{host}:{port}')
     
     return flask_thread
+
 
 def main() -> None:
     default_threshold, default_interval = load_config()
@@ -920,5 +928,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
