@@ -2,6 +2,10 @@
 
 A comprehensive, feature-rich battery monitoring application for Windows with real-time web dashboard, ML predictions, multi-device support, and advanced notifications.
 
+## Current Status
+
+**Stable and actively maintained.** All major issues have been resolved and the application is ready for regular use. The project is actively maintained and welcomes contributions from the community.
+
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
@@ -377,12 +381,24 @@ The application uses SQLite with the following tables:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Areas for improvement:
-- Additional notification channels (Slack, Discord, etc.)
-- More ML models for better predictions
-- Mobile app companion
-- Cloud sync for multi-device setups
-- Power profile integration (Windows power plans)
+We welcome contributions from the community! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to get started.
+
+### Looking for Contributors
+
+We're actively looking for contributors to help improve the application! Whether you're a beginner or experienced developer, there are opportunities to contribute.
+
+### Areas of Contribution
+
+- **Bug fixes**: Help resolve existing issues
+- **Refactoring**: Improve code quality and maintainability
+- **UI/UX**: Enhance the web interface and user experience
+- **Documentation**: Improve README, code comments, and usage guides
+- **Testing**: Add unit tests and improve test coverage
+- **Additional notification channels**: Slack, Discord, etc.
+- **More ML models**: Better predictions and analytics
+- **Mobile app companion**: Extend functionality to mobile platforms
+- **Cloud sync**: Multi-device setup synchronization
+- **Power profile integration**: Windows power plan integration
 
 ## 📝 License
 
