@@ -46,7 +46,7 @@ class DeviceManager:
         pass
     
     def register_device(self, device_id: str, device_type: str, 
-                       device_name: str = None, **kwargs) -> DeviceProfile:
+                       device_name: Optional[str] = None, **kwargs) -> DeviceProfile:
         """Register a new device or update existing one"""
         if device_id in self.devices:
             # Update existing device
@@ -177,11 +177,10 @@ class DeviceManager:
         
         return comparison
     
-    def auto_select_device(self, laptop_available: bool = False, 
-                          phones_charging: List[str] = None) -> Optional[str]:
+    def auto_select_device(self, phones_charging: Optional[List[str]] = None) -> Optional[str]:
         """
         Automatically select which device to monitor based on availability
-        Priority: Charging phones > Laptop (if plugged) > Highest priority device
+        Priority: Charging phones > Highest priority device
         """
         if phones_charging:
             # Prioritize charging phones

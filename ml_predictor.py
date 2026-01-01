@@ -287,7 +287,7 @@ class BatteryHealthAnalyzer:
                     # If charging rate has decreased significantly, health is degrading
                     degradation = ((older_avg - recent_avg) / older_avg) * 100
                     
-                    health_score = max(0, 100 - degradation * 2)
+                    health_score = max(0, min(100, 100 - degradation * 2))
                     
                     if health_score >= 85:
                         return health_score, "Good"

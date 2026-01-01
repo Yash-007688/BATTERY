@@ -12,8 +12,9 @@ from pystray import MenuItem as item
 class TrayApp:
     """System tray application for Battery Monitor"""
     
-    def __init__(self, battery_monitor):
+    def __init__(self, battery_monitor, dashboard_url: str = "http://127.0.0.1:5000"):
         self.monitor = battery_monitor
+        self.dashboard_url = dashboard_url
         self.icon = None
         self.running = False
         self.current_percentage = 0
@@ -128,27 +129,30 @@ class TrayApp:
     def set_threshold(self, threshold: int):
         """Set battery threshold"""
         if self.monitor:
-            self.monitor._update_threshold(threshold)
+            # Use public API method instead of private method
+            self.monitor.update_threshold(threshold)
     
     def snooze_alerts(self):
         """Snooze alerts for 1 minute"""
         if self.monitor:
-            self.monitor._handle_snooze()
+            # Use public API method instead of private method
+            self.monitor.snooze_alerts()
     
     def dismiss_alerts(self):
         """Dismiss alerts"""
         if self.monitor:
-            self.monitor._handle_dismiss()
+            # Use public API method instead of private method
+            self.monitor.dismiss_alerts()
     
     def open_dashboard(self):
         """Open web dashboard"""
         import webbrowser
-        webbrowser.open('http://127.0.0.1:5000')
+        webbrowser.open(self.dashboard_url)
     
     def open_settings(self):
         """Open settings page"""
         import webbrowser
-        webbrowser.open('http://127.0.0.1:5000/settings')
+        webbrowser.open(f'{self.dashboard_url}/settings')
     
     def quit_app(self):
         """Quit the application"""
@@ -187,13 +191,13 @@ class TrayApp:
             self.icon.stop()
 
 
-def start_tray_app(battery_monitor):
+def start_tray_app(battery_monitor, dashboard_url: str = "http://127.0.0.1:5000"):
     """Start system tray application"""
     try:
-        tray = TrayApp(battery_monitor)
+        tray = TrayApp(battery_monitor, dashboard_url)
         tray.run()
         return tray
-    except Exception as e:
+    except (ImportError, OSError) as e:
         print(f"Error starting tray app: {e}")
         print("Tray functionality requires pystray and Pillow. Install with: pip install pystray Pillow")
         return None

@@ -36,11 +36,14 @@ class NotificationManager:
         self.sounds_dir = os.path.join(os.path.dirname(__file__), 'sounds')
         
         # Email configuration
-        self.smtp_server = None
-        self.smtp_port = None
-        self.smtp_username = None
-        self.smtp_password = None
-        self.from_email = None
+        self.smtp_server = os.getenv('SMTP_SERVER')
+        self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        self.smtp_username = os.getenv('SMTP_USERNAME')
+        self.smtp_password = os.getenv('SMTP_PASSWORD')
+        self.from_email = os.getenv('SMTP_FROM_EMAIL')
+        
+        # Configure from environment if available
+        self.configure_email_from_env()
         
         # SMS configuration (Twilio)
         self.twilio_account_sid = None
@@ -49,6 +52,14 @@ class NotificationManager:
         
         # Create sounds directory if it doesn't exist
         os.makedirs(self.sounds_dir, exist_ok=True)
+    
+    def configure_email_from_env(self):
+        """Configure email from environment variables"""
+        self.smtp_server = os.getenv('SMTP_SERVER')
+        self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        self.smtp_username = os.getenv('SMTP_USERNAME')
+        self.smtp_password = os.getenv('SMTP_PASSWORD')
+        self.from_email = os.getenv('SMTP_FROM_EMAIL') or os.getenv('SMTP_USERNAME')
     
     def configure_email(self, smtp_server: str, smtp_port: int, 
                        username: str, password: str, from_email: str = None):
@@ -97,7 +108,7 @@ class NotificationManager:
                     title=f'Sound: {sound_name or "beep"}',
                     message=f'Played {times} time(s)'
                 )
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             print(f"Error playing sound: {e}")
     
     def send_desktop_notification(self, title: str, message: str, 
@@ -146,7 +157,7 @@ class NotificationManager:
             
             msg.attach(MIMEText(body, 'plain'))
             
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
                 server.starttls()
                 server.login(self.smtp_username, self.smtp_password)
                 server.send_message(msg)
@@ -164,9 +175,13 @@ class NotificationManager:
             
             print(f"Email sent to {to_email}")
             return True
-        except Exception as e:
-            print(f"Error sending email: {e}")
-            return False
+        except smtplib.SMTPException as e:
+            print(f"SMTP error sending email: {e}")
+        except OSError as e:
+            print(f"Network error sending email: {e}")
+        else:
+            return True
+        return False
     
     def send_sms(self, to_number: str, message: str,
                 device_type: str = None, threshold: float = None,

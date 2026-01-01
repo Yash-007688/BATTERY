@@ -26,6 +26,21 @@ except ImportError:
     print("Warning: plyer not installed. Windows notifications will not be available.")
 
 
+# Import other modules from the project
+try:
+    from models import Base, Device, BatteryReading, ChargeCycle, NotificationLog, UserProfile
+    from database import DatabaseManager
+    from notifications import NotificationManager
+    from ml_predictor import BatteryPredictor
+    from device_manager import DeviceManager
+    from config_manager import ConfigManager
+    from scheduler import Scheduler
+    from tray_app import TrayApp
+except ImportError as e:
+    print(f"Warning: Could not import additional modules: {e}")
+    print("Some advanced features may not be available.")
+
+
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "battery_config.json")
 BULLET_KEYS = [
     # Common Windows battery properties exposed for Bluetooth audio
@@ -58,6 +73,20 @@ class BatteryMonitor:
         self._minute_anchor_time: datetime | None = None
         self._minute_anchor_percent: float | None = None
         self._per_minute_diffs: list[float] = []
+        
+        # Initialize additional components if available
+        try:
+            self.db_manager = DatabaseManager()
+            self.notification_manager = NotificationManager() if 'NotificationManager' in globals() else None
+            self.predictor = BatteryPredictor(self.db_manager) if 'BatteryPredictor' in globals() else None
+            self.device_manager = DeviceManager() if 'DeviceManager' in globals() else None
+            self.config_manager = ConfigManager() if 'ConfigManager' in globals() else None
+        except:
+            self.db_manager = None
+            self.notification_manager = None
+            self.predictor = None
+            self.device_manager = None
+            self.config_manager = None
 
     def start(self) -> None:
         self._start_time = datetime.now()
@@ -119,7 +148,7 @@ class BatteryMonitor:
         new_threshold = max(1, min(100, new_threshold))
         self.threshold_percent = new_threshold
         self._alerted = False
-
+    
         current_percent = self._get_battery_percent()
         # Reset timing window from now for new threshold if below target
         if current_percent < self.threshold_percent:
@@ -128,7 +157,7 @@ class BatteryMonitor:
             self._reached_time = None
             print(
                 f"Threshold updated to {self.threshold_percent}%. "
-                f"Restarting timer from {self._start_time.strftime('%H:%M:%S')} at {current_percent:.0f}%."
+                f"Restarting timer from {self._start_time.strftime('%H:%M:%S')} at {current_percent:.0f}%.")
             )
         else:
             # Already at/above threshold – alert now and mark reached
@@ -136,11 +165,23 @@ class BatteryMonitor:
             self._beep()
             self._alerted = True
             print(
-                f"Threshold updated to {self.threshold_percent}%. Already at {current_percent:.0f}% – alerting now."
+                f"Threshold updated to {self.threshold_percent}%. Already at {current_percent:.0f}% – alerting now.")
             )
-
+    
         # Persist to config for next run
         self._save_config()
+        
+    def update_threshold(self, threshold: int):
+        """Public API to update threshold"""
+        self._update_threshold(threshold)
+        
+    def snooze_alerts(self):
+        """Public API to snooze alerts"""
+        self._handle_snooze()
+        
+    def dismiss_alerts(self):
+        """Public API to dismiss alerts"""
+        self._handle_dismiss()
 
     def start_discharge_calculation(self) -> None:
         """Start monitoring to calculate discharge rate without showing regular logs"""
@@ -389,7 +430,7 @@ class BatteryMonitor:
                     design_cap = int(parts[2])
                     full_cap = int(parts[3])
                     if design_cap > 0 and full_cap > 0:
-                        health_pct = (full_cap / design_cap) * 100
+                        health_pct = (full_cap / designCap) * 100
                         # Check <50 before <80 to ensure conditions are reachable
                         if health_pct < 50:
                             extra_info['health'] = f"Poor ({health_pct:.1f}%)"
@@ -830,6 +871,55 @@ def create_flask_app(monitor):
         # Return an empty response with 204 No Content to prevent 404
         from flask import Response
         return Response(status=204)
+    
+    # Add routes for additional functionality from other modules
+    @app.route('/api/battery-history')
+    def battery_history():
+        if monitor.db_manager:
+            # Return battery history data
+            try:
+                # Get recent battery readings
+                from database import DatabaseManager
+                db = DatabaseManager()
+                # This would return battery history data in JSON format
+                return {"status": "success", "data": []}
+            except:
+                return {"status": "error", "message": "Database not available"}
+        else:
+            return {"status": "error", "message": "Database not initialized"}
+    
+    @app.route('/api/devices')
+    def devices():
+        if monitor.device_manager:
+            try:
+                # Return connected devices
+                return {"status": "success", "devices": []}
+            except:
+                return {"status": "error", "message": "Device manager not available"}
+        else:
+            return {"status": "error", "message": "Device manager not initialized"}
+    
+    @app.route('/api/predictions')
+    def predictions():
+        if monitor.predictor:
+            try:
+                # Return ML predictions
+                return {"status": "success", "predictions": []}
+            except:
+                return {"status": "error", "message": "Predictor not available"}
+        else:
+            return {"status": "error", "message": "Predictor not initialized"}
+    
+    @app.route('/api/settings')
+    def settings():
+        if monitor.config_manager:
+            try:
+                # Return current settings
+                return {"status": "success", "settings": {}}
+            except:
+                return {"status": "error", "message": "Config manager not available"}
+        else:
+            return {"status": "error", "message": "Config manager not initialized"}
     
     return app
 

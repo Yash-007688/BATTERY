@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime, time
 from typing import Optional, Tuple
 import threading
+from xml.sax.saxutils import escape as xml_escape
 
 
 class MonitorScheduler:
@@ -161,6 +162,11 @@ class WindowsTaskScheduler:
         
         python_exe = sys.executable
         
+        # Escape special characters in paths and args
+        script_path_escaped = xml_escape(script_path)
+        args_escaped = xml_escape(args)
+        working_dir_escaped = xml_escape(os.path.dirname(script_path))
+        
         # Create XML for task
         task_xml = f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -200,8 +206,8 @@ class WindowsTaskScheduler:
   <Actions>
     <Exec>
       <Command>{python_exe}</Command>
-      <Arguments>"{script_path}" {args}</Arguments>
-      <WorkingDirectory>{os.path.dirname(script_path)}</WorkingDirectory>
+      <Arguments>"{script_path_escaped}" {args_escaped}</Arguments>
+      <WorkingDirectory>{working_dir_escaped}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>"""

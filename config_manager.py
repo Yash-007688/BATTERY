@@ -6,6 +6,7 @@ import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass, asdict
+import dataclasses
 
 
 @dataclass
@@ -226,7 +227,16 @@ class ConfigManager:
             counter += 1
         
         data['name'] = name
-        profile = ProfileConfig(**data)
+        # Filter to known ProfileConfig fields
+        known_fields = {f.name for f in dataclasses.fields(ProfileConfig)}
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+        profile = ProfileConfig(**filtered_data)
+        
+        # Validate the imported profile
+        issues = self.validate_profile(profile)
+        if issues:
+            print(f"Warning: Imported profile has validation issues: {issues}")
+        
         self.profiles[name] = profile
         self.save()
         

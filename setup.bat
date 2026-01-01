@@ -41,7 +41,12 @@ if errorlevel 1 (
     echo WARNING: Some dependencies failed to install
     echo You can continue, but some features may not work
     echo.
-    pause
+    echo Do you want to continue anyway? (Y/N)
+    choice /C YN /N
+    if errorlevel 2 (
+        echo Setup cancelled.
+        exit /b 1
+    )
 ) else (
     echo.
     echo [3/4] Dependencies installed successfully!

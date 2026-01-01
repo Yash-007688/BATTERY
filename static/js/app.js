@@ -40,8 +40,12 @@ class BatteryMonitor {
         };
         
         this.socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleUpdate(data);
+            try {
+                const data = JSON.parse(event.data);
+                this.handleUpdate(data);
+            } catch (error) {
+                console.error('Failed to parse WebSocket message:', error);
+            }
         };
         
         this.socket.onerror = (error) => {

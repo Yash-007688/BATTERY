@@ -365,13 +365,6 @@ class BatteryMonitor:
         except Exception:
             return None
 
-    def _get_battery(self) -> tuple[float, bool]:
-        batt = psutil.sensors_battery()
-        if batt is None:
-            print("Battery info not available on this system.")
-            return 0.0, False
-        return float(batt.percent), bool(batt.power_plugged)
-
     def _get_phone_battery(self) -> tuple[float | None, bool | None, str | None, dict | None]:
         """
         Get phone battery info via ADB.

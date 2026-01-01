@@ -56,7 +56,7 @@ While the app is running, type these commands:
 ## 🌐 Web Interface
 
 ### Access
-- **URL**: http://127.0.0.1:5000
+- **URL**: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 - **Features**: Real-time updates, charts, statistics, settings
 
 ### Dashboard Sections
@@ -354,6 +354,8 @@ BATTERY/
 
 ---
 
+---
+
 ## 💡 Pro Tips
 
 ### Maximize Battery Life
@@ -426,4 +428,4 @@ python app_enhanced.py --tray --profile gaming
 
 ---
 
-**Happy Monitoring! 🔋⚡**
+# Happy Monitoring! 🔋⚡
