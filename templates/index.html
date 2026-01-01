@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battery Monitor - Real-time Dashboard</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header glass">
+        <div class="logo">
+            <span class="logo-icon">🔋</span>
+            <span>Battery Monitor</span>
+        </div>
+        <div>
+            <button id="theme-toggle" class="theme-toggle">🌙 Dark</button>
+        </div>
+    </div>
+    
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Device Selector -->
+        <div class="device-selector">
+            <button class="device-btn active" data-device="laptop">💻 Laptop</button>
+            <button class="device-btn" data-device="phone">📱 Phone</button>
+        </div>
+        
+        <!-- Main Grid -->
+        <div class="grid">
+            <!-- Battery Display Card -->
+            <div class="card glass battery-display">
+                <div class="battery-icon-container">
+                    <div class="battery-icon">
+                        <div id="battery-fill" class="battery-fill"></div>
+                    </div>
+                </div>
+                
+                <div id="battery-percentage" class="battery-percentage">--</div>
+                <div id="battery-status" class="battery-status">Initializing...</div>
+                
+                <div class="battery-details">
+                    <div class="detail-item">
+                        <div class="detail-label">Voltage</div>
+                        <div id="voltage-value" class="detail-value">--</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Temperature</div>
+                        <div id="temperature-value" class="detail-value">--</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Δ1m</div>
+                        <div id="delta-value" class="detail-value">--</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Time to Threshold</div>
+                        <div id="time-value" class="detail-value">--</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Statistics Card -->
+            <div class="card glass">
+                <h3 class="card-title">📊 Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Avg Battery (24h)</div>
+                        <div id="avg-percentage" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Charge Cycles</div>
+                        <div id="charge-cycles" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Battery Health</div>
+                        <div id="health-score" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Avg Charge Time</div>
+                        <div id="avg-charge-time" class="stat-value">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chart Section -->
+        <div class="card glass">
+            <h3 class="card-title">📈 Battery History</h3>
+            <div class="chart-container">
+                <canvas id="battery-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Bottom Grid -->
+        <div class="grid">
+            <!-- Notifications Card -->
+            <div class="card glass">
+                <h3 class="card-title">🔔 Recent Notifications</h3>
+                <div id="notifications-list" class="notifications-list">
+                    <div class="notification-item">
+                        <div class="notification-header">
+                            <span class="notification-title">Welcome!</span>
+                            <span class="notification-time">Now</span>
+                        </div>
+                        <div class="notification-message">Battery monitoring started. Real-time updates enabled.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Settings Card -->
+            <div class="card glass">
+                <h3 class="card-title">⚙️ Quick Settings</h3>
+                <form id="settings-form">
+                    <div class="settings-group">
+                        <div class="setting-item">
+                            <label class="setting-label">Threshold (%)</label>
+                            <input type="number" name="threshold" class="setting-input" 
+                                   value="{{ threshold }}" min="1" max="100">
+                        </div>
+                        <div class="setting-item">
+                            <label class="setting-label">Poll Interval (s)</label>
+                            <input type="number" name="poll_interval" class="setting-input" 
+                                   value="{{ poll_interval }}" min="5" max="300">
+                        </div>
+                        <div class="setting-item">
+                            <label class="setting-label">Desktop Notifications</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="desktop_notifications" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label class="setting-label">Sound Alerts</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="sound_alerts" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label class="setting-label">Adaptive Polling</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="adaptive_polling">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn">💾 Save Settings</button>
+                    <button type="button" class="btn btn-secondary" 
+                            onclick="window.batteryMonitor.exportData('json')">
+                        📥 Export Data
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Health Recommendations -->
+        <div class="card glass">
+            <h3 class="card-title">💡 Battery Health Recommendations</h3>
+            <div id="recommendations" class="recommendations-list">
+                <div class="notification-item">
+                    <div class="notification-message">💡 Keep battery between 20-80% for optimal lifespan</div>
+                </div>
+                <div class="notification-item">
+                    <div class="notification-message">🌡️ Avoid extreme temperatures</div>
+                </div>
+                <div class="notification-item">
+                    <div class="notification-message">🔌 Unplug when fully charged</div>
+                </div>
+                <div class="notification-item">
+                    <div class="notification-message">⚡ Use original charger when possible</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Connection Status -->
+    <div class="connection-status glass">
+        <span class="status-dot"></span>
+        <span>Connected</span>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
