@@ -17,6 +17,8 @@ Pillow>=10.0.0
 # Machine Learning
 scikit-learn>=1.3.0
 numpy>=1.24.0
+pandas>=1.5.0
+joblib>=1.3.0
 
 # Optional: Email notifications (using built-in smtplib)
 # Optional: SMS notifications

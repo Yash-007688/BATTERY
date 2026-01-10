@@ -36,6 +36,7 @@ try:
     from config_manager import ConfigManager
     from scheduler import Scheduler
     from tray_app import TrayApp
+    from ai_analytics import AIBatteryAnalyzer, AIProductivityEnhancer
 except ImportError as e:
     print(f"Warning: Could not import additional modules: {e}")
     print("Some advanced features may not be available.")
@@ -81,12 +82,16 @@ class BatteryMonitor:
             self.predictor = BatteryPredictor(self.db_manager) if 'BatteryPredictor' in globals() else None
             self.device_manager = DeviceManager() if 'DeviceManager' in globals() else None
             self.config_manager = ConfigManager() if 'ConfigManager' in globals() else None
+            self.ai_analyzer = AIBatteryAnalyzer(self.db_manager) if 'AIBatteryAnalyzer' in globals() else None
+            self.ai_productivity = AIProductivityEnhancer(self.db_manager) if 'AIProductivityEnhancer' in globals() else None
         except:
             self.db_manager = None
             self.notification_manager = None
             self.predictor = None
             self.device_manager = None
             self.config_manager = None
+            self.ai_analyzer = None
+            self.ai_productivity = None
 
     def start(self) -> None:
         self._start_time = datetime.now()
@@ -158,7 +163,6 @@ class BatteryMonitor:
             print(
                 f"Threshold updated to {self.threshold_percent}%. "
                 f"Restarting timer from {self._start_time.strftime('%H:%M:%S')} at {current_percent:.0f}%.")
-            )
         else:
             # Already at/above threshold – alert now and mark reached
             self._reached_time = datetime.now()
@@ -166,7 +170,6 @@ class BatteryMonitor:
             self._alerted = True
             print(
                 f"Threshold updated to {self.threshold_percent}%. Already at {current_percent:.0f}% – alerting now.")
-            )
     
         # Persist to config for next run
         self._save_config()
@@ -182,6 +185,24 @@ class BatteryMonitor:
     def dismiss_alerts(self):
         """Public API to dismiss alerts"""
         self._handle_dismiss()
+    
+    def get_ai_insights(self, device_id: str = None):
+        """Get AI-powered battery insights"""
+        if self.ai_productivity:
+            if device_id is None:
+                # Use laptop as default device
+                device_id = "laptop_default"
+            return self.ai_productivity.generate_daily_battery_report(device_id)
+        return None
+    
+    def get_ai_charge_prediction(self, device_id: str = None, target_percentage: int = 100):
+        """Get AI-enhanced charge time prediction"""
+        if self.ai_productivity:
+            if device_id is None:
+                # Use laptop as default device
+                device_id = "laptop_default"
+            return self.ai_productivity.predict_charge_time(device_id, target_percentage)
+        return None
 
     def start_discharge_calculation(self) -> None:
         """Start monitoring to calculate discharge rate without showing regular logs"""
@@ -909,6 +930,30 @@ def create_flask_app(monitor):
                 return {"status": "error", "message": "Predictor not available"}
         else:
             return {"status": "error", "message": "Predictor not initialized"}
+    
+    @app.route('/api/ai-insights')
+    def ai_insights():
+        if monitor.ai_productivity:
+            try:
+                # Get AI-powered battery insights
+                insights = monitor.get_ai_insights()
+                return {"status": "success", "insights": insights}
+            except Exception as e:
+                return {"status": "error", "message": f"AI insights not available: {str(e)}"}
+        else:
+            return {"status": "error", "message": "AI analyzer not initialized"}
+    
+    @app.route('/api/ai-charge-prediction')
+    def ai_charge_prediction():
+        if monitor.ai_productivity:
+            try:
+                # Get AI-enhanced charge time prediction
+                prediction = monitor.get_ai_charge_prediction()
+                return {"status": "success", "prediction": prediction}
+            except Exception as e:
+                return {"status": "error", "message": f"AI prediction not available: {str(e)}"}
+        else:
+            return {"status": "error", "message": "AI predictor not initialized"}
     
     @app.route('/api/settings')
     def settings():

@@ -30,6 +30,8 @@ A comprehensive, feature-rich battery monitoring application for Windows with re
 
 ### 🧠 Smart Features
 - **ML Predictions**: Machine learning-based charge time estimation
+- **AI-Powered Analytics**: Anomaly detection, usage pattern analysis, and battery lifespan prediction
+- **Smart Recommendations**: AI-generated suggestions for optimal battery care
 - **Adaptive Polling**: Faster updates when near threshold
 - **Battery Health Analysis**: Degradation tracking and recommendations
 - **Optimal Charging Suggestions**: Tips for battery longevity
@@ -289,6 +291,7 @@ battery_monitor/
 ├── database.py              # Database manager
 ├── notifications.py         # Notification system
 ├── ml_predictor.py          # ML predictions & health analysis
+├── ai_analytics.py          # AI-powered analytics and recommendations
 ├── device_manager.py        # Multi-device management
 ├── config_manager.py        # Configuration & profiles
 ├── scheduler.py             # Scheduling & auto-start

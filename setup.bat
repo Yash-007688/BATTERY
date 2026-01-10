@@ -36,6 +36,10 @@ echo.
 
 pip install -r requirements.txt
 
+REM Install additional AI dependencies
+echo Installing AI dependencies...
+pip install pandas joblib
+
 if errorlevel 1 (
     echo.
     echo WARNING: Some dependencies failed to install

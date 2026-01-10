@@ -1,5 +1,33 @@
 {
-  "threshold_percent": 100,
-  "poll_interval_seconds": 30
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "threshold_percent": 100,
+      "poll_interval_seconds": 30,
+      "enable_desktop_notifications": true,
+      "enable_sound": true,
+      "enable_email": false,
+      "enable_sms": false,
+      "custom_sound_path": null,
+      "email_address": null,
+      "phone_number": null,
+      "enable_adaptive_polling": false,
+      "enable_ml_predictions": true,
+      "dark_mode": false,
+      "smtp_server": null,
+      "smtp_port": 587,
+      "smtp_username": null,
+      "smtp_password": null,
+      "twilio_account_sid": null,
+      "twilio_auth_token": null,
+      "twilio_from_number": null,
+      "enable_scheduling": false,
+      "start_time": null,
+      "stop_time": null,
+      "data_retention_days": 30,
+      "additional_thresholds": []
+    }
+  },
+  "version": "2.0",
+  "last_updated": "2026-01-02T14:25:29.444331"
 }
-
