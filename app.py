@@ -69,6 +69,10 @@ class BatteryMonitor:
         self._last_below_threshold: bool = True
         self._phone_printed: bool = False  # Thread-safe instance variable instead of dynamic attribute
         self._adb_warned: bool = False    # Thread-safe instance variable instead of dynamic attribute
+        
+        # Current device tracking for AI features
+        self._current_device_id: str | None = None
+        self._current_device_type: str = 'laptop'
 
         # Per-minute change tracking (percent-based; voltage not available via psutil)
         self._minute_anchor_time: datetime | None = None
@@ -78,13 +82,14 @@ class BatteryMonitor:
         # Initialize additional components if available
         try:
             self.db_manager = DatabaseManager()
-            self.notification_manager = NotificationManager() if 'NotificationManager' in globals() else None
+            self.notification_manager = NotificationManager(self.db_manager) if 'NotificationManager' in globals() else None
             self.predictor = BatteryPredictor(self.db_manager) if 'BatteryPredictor' in globals() else None
-            self.device_manager = DeviceManager() if 'DeviceManager' in globals() else None
+            self.device_manager = DeviceManager(self.db_manager) if 'DeviceManager' in globals() else None
             self.config_manager = ConfigManager() if 'ConfigManager' in globals() else None
             self.ai_analyzer = AIBatteryAnalyzer(self.db_manager) if 'AIBatteryAnalyzer' in globals() else None
             self.ai_productivity = AIProductivityEnhancer(self.db_manager) if 'AIProductivityEnhancer' in globals() else None
-        except:
+        except Exception as e:
+            print(f"Warning: Failed to initialize some components: {e}")
             self.db_manager = None
             self.notification_manager = None
             self.predictor = None
@@ -190,8 +195,12 @@ class BatteryMonitor:
         """Get AI-powered battery insights"""
         if self.ai_productivity:
             if device_id is None:
-                # Use laptop as default device
-                device_id = "laptop_default"
+                # Use current device ID if available, otherwise generate a default
+                if self._current_device_id:
+                    device_id = self._current_device_id
+                else:
+                    # Generate a default laptop device ID
+                    device_id = f"laptop_{os.getenv('COMPUTERNAME', 'default')}"
             return self.ai_productivity.generate_daily_battery_report(device_id)
         return None
     
@@ -199,8 +208,12 @@ class BatteryMonitor:
         """Get AI-enhanced charge time prediction"""
         if self.ai_productivity:
             if device_id is None:
-                # Use laptop as default device
-                device_id = "laptop_default"
+                # Use current device ID if available, otherwise generate a default
+                if self._current_device_id:
+                    device_id = self._current_device_id
+                else:
+                    # Generate a default laptop device ID
+                    device_id = f"laptop_{os.getenv('COMPUTERNAME', 'default')}"
             return self.ai_productivity.predict_charge_time(device_id, target_percentage)
         return None
 
@@ -253,6 +266,45 @@ class BatteryMonitor:
         while not self._stop_event.is_set():
             percent, plugged, device, device_id, extra_info = self._get_battery_info()
             now_str = datetime.now().strftime('%H:%M:%S')
+            
+            # Update current device tracking
+            if device_id:
+                self._current_device_id = device_id
+                self._current_device_type = device
+            elif device == 'laptop' and not device_id:
+                # For laptop, generate a consistent device ID
+                laptop_id = f"laptop_{os.getenv('COMPUTERNAME', 'default')}"
+                self._current_device_id = laptop_id
+                self._current_device_type = 'laptop'
+                device_id = laptop_id
+            
+            # Save to database if available
+            if self.db_manager and device_id:
+                try:
+                    # Register device if not exists
+                    self.db_manager.get_or_create_device(
+                        device_id=device_id,
+                        device_type=self._current_device_type,
+                        device_name=f"{self._current_device_type.capitalize()}",
+                        technology=extra_info.get('technology') if extra_info else None
+                    )
+                    
+                    # Calculate delta_1m if available
+                    delta_1m = self._per_minute_diffs[-1] if self._per_minute_diffs else None
+                    
+                    # Save battery reading
+                    self.db_manager.add_reading(
+                        device_id=device_id,
+                        percentage=percent,
+                        is_charging=plugged,
+                        voltage=extra_info.get('voltage') if extra_info else None,
+                        temperature=extra_info.get('temperature') if extra_info else None,
+                        health_status=extra_info.get('health') if extra_info else None,
+                        delta_1m=delta_1m
+                    )
+                except Exception as e:
+                    # Silently fail if database operations fail
+                    pass
 
             if device == 'phone' and device_id and not self._phone_printed:
                 tech_info = f" ({extra_info.get('technology', 'Unknown')})" if extra_info and 'technology' in extra_info else ""
@@ -451,7 +503,7 @@ class BatteryMonitor:
                     design_cap = int(parts[2])
                     full_cap = int(parts[3])
                     if design_cap > 0 and full_cap > 0:
-                        health_pct = (full_cap / designCap) * 100
+                        health_pct = (full_cap / design_cap) * 100
                         # Check <50 before <80 to ensure conditions are reachable
                         if health_pct < 50:
                             extra_info['health'] = f"Poor ({health_pct:.1f}%)"
@@ -514,8 +566,8 @@ class BatteryMonitor:
                 return None, None, None, None
             device_id = devices_lines[0].split('\t')[0]
             
-            # Get detailed battery info - include device_id in the command
-            result = subprocess.run(['adb', 'shell', 'dumpsys', 'battery', '-s', device_id], capture_output=True, text=True, timeout=5)
+            # Get detailed battery info
+            result = subprocess.run(['adb', 'shell', 'dumpsys', 'battery'], capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
                 return None, None, None, None
                 
@@ -933,10 +985,13 @@ def create_flask_app(monitor):
     
     @app.route('/api/ai-insights')
     def ai_insights():
+        from flask import request
         if monitor.ai_productivity:
             try:
+                # Get device_id from query parameter, if provided
+                device_id = request.args.get('device_id', None)
                 # Get AI-powered battery insights
-                insights = monitor.get_ai_insights()
+                insights = monitor.get_ai_insights(device_id=device_id)
                 return {"status": "success", "insights": insights}
             except Exception as e:
                 return {"status": "error", "message": f"AI insights not available: {str(e)}"}
@@ -945,10 +1000,14 @@ def create_flask_app(monitor):
     
     @app.route('/api/ai-charge-prediction')
     def ai_charge_prediction():
+        from flask import request
         if monitor.ai_productivity:
             try:
+                # Get device_id and target_percentage from query parameters
+                device_id = request.args.get('device_id', None)
+                target_percentage = request.args.get('target_percentage', 100, type=int)
                 # Get AI-enhanced charge time prediction
-                prediction = monitor.get_ai_charge_prediction()
+                prediction = monitor.get_ai_charge_prediction(device_id=device_id, target_percentage=target_percentage)
                 return {"status": "success", "prediction": prediction}
             except Exception as e:
                 return {"status": "error", "message": f"AI prediction not available: {str(e)}"}
