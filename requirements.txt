@@ -27,5 +27,9 @@ twilio>=8.10.0
 # Environment variables
 python-dotenv>=1.0.0
 
+# AI and Voice features
+pyttsx3>=2.90
+requests>=2.31.0
+
 # Scheduling (using built-in sched and threading)
 # Windows Task Scheduler (using subprocess)
