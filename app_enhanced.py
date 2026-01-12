@@ -20,6 +20,8 @@ from ml_predictor import BatteryPredictor, BatteryHealthAnalyzer
 from device_manager import DeviceManager
 from config_manager import ConfigManager
 from scheduler import MonitorScheduler, WindowsTaskScheduler
+from ai_doctor import AIDoctor
+from voice_engine import voice_engine
 
 # Flask and WebSocket imports
 from flask import Flask, render_template, jsonify, request, send_file
@@ -60,9 +62,11 @@ class EnhancedBatteryMonitor:
         self.ml_predictor = BatteryPredictor(self.db_manager)
         self.health_analyzer = BatteryHealthAnalyzer(self.db_manager)
         self.device_manager = DeviceManager(self.db_manager)
+        self.ai_doctor = AIDoctor(self.db_manager)
         
         # Configure notifications from profile
         self._configure_notifications()
+        self.enable_voice_alerts = True  # Default to enabled
         
         # Initialize scheduler if enabled
         self.scheduler = None
@@ -610,6 +614,11 @@ class EnhancedBatteryMonitor:
             profile_settings=profile_settings
         )
         
+        # Voice alert
+        if self.enable_voice_alerts:
+            message = f"{device_type.capitalize()} battery reached {battery_percentage:.0f} percent. Please disconnect the charger."
+            voice_engine.speak(message)
+        
         print("Battery reached threshold. Type 'snooze' to mute for 1 minute or 'dismiss' (requires unplugging charger).")
     
     def _handle_snooze(self):
@@ -767,6 +776,25 @@ def create_flask_app(monitor):
             'health_score': 100.0,  # Placeholder
             'avg_charge_time': '45m'  # Placeholder
         })
+    
+    @app.route('/api/chat', methods=['POST'])
+    def ai_chat():
+        data = request.json
+        message = data.get('message')
+        device_id = monitor._current_device_id or 'laptop_default'
+        history = data.get('history', [])
+        
+        if not message:
+            return jsonify({'error': 'No message provided'}), 400
+            
+        response = monitor.ai_doctor.chat(message, device_id, history)
+        return jsonify({'response': response})
+    
+    @app.route('/api/toggle-voice', methods=['POST'])
+    def toggle_voice():
+        data = request.json
+        monitor.enable_voice_alerts = data.get('enabled', True)
+        return jsonify({'success': True, 'enabled': monitor.enable_voice_alerts})
     
     @app.route('/api/settings', methods=['POST'])
     def save_settings():

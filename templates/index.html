@@ -139,15 +139,23 @@
                                 <span class="slider"></span>
                             </label>
                         </div>
-                        <div class="setting-item">
-                            <label class="setting-label">Sound Alerts</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" name="sound_alerts" checked>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <div class="setting-item">
-                            <label class="setting-label">Adaptive Polling</label>
+                          <div class="setting-item">
+                              <label class="setting-label">Sound Alerts</label>
+                              <label class="toggle-switch">
+                                  <input type="checkbox" name="sound_alerts" checked>
+                                  <span class="slider"></span>
+                              </label>
+                          </div>
+                          <div class="setting-item">
+                              <label class="setting-label">Voice Alerts (TTS)</label>
+                              <label class="toggle-switch">
+                                  <input type="checkbox" name="voice_alerts" id="voice-alerts-toggle" checked>
+                                  <span class="slider"></span>
+                              </label>
+                          </div>
+                          <div class="setting-item">
+                              <label class="setting-label">Adaptive Polling</label>
+
                             <label class="toggle-switch">
                                 <input type="checkbox" name="adaptive_polling">
                                 <span class="slider"></span>
@@ -188,6 +196,136 @@
         <span class="status-dot"></span>
         <span>Connected</span>
     </div>
+    
+    <!-- AI Battery Doctor Chat Widget -->
+    <div id="ai-chat-widget" class="chat-widget glass">
+        <div class="chat-header">
+            <span class="chat-logo">🤖</span>
+            <span class="chat-title">AI Battery Doctor</span>
+            <button id="close-chat" class="close-btn">&times;</button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+            <div class="message ai-message">
+                Hello! I'm your AI Battery Doctor. How can I help you optimize your battery today?
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Ask about your battery..." autocomplete="off">
+            <button id="send-btn" class="send-btn">➔</button>
+        </div>
+    </div>
+    <button id="open-chat" class="chat-trigger-btn glass">
+        <span>💬 AI Doctor</span>
+    </button>
+
+    <style>
+        .chat-widget {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 350px;
+            height: 450px;
+            display: none;
+            flex-direction: column;
+            z-index: 1000;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .chat-header {
+            padding: 15px;
+            background: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .chat-title { font-weight: 600; }
+        .close-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .message {
+            padding: 10px 14px;
+            border-radius: 15px;
+            max-width: 80%;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        
+        .ai-message {
+            background: rgba(255, 255, 255, 0.1);
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+        
+        .user-message {
+            background: var(--primary-color);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+        
+        .chat-input-area {
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        #chat-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 20px;
+            color: var(--text-color);
+            outline: none;
+        }
+        
+        .send-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .chat-trigger-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            z-index: 1000;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        /* Dark mode adjustments for chat */
+        [data-theme="dark"] .ai-message { background: rgba(255, 255, 255, 0.1); }
+        [data-theme="dark"] #chat-input { background: rgba(0, 0, 0, 0.2); }
+    </style>
     
     <!-- Scripts -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

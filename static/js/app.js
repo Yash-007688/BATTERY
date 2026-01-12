@@ -18,6 +18,7 @@ class BatteryMonitor {
             }]
         };
         
+        this.chatHistory = [];
         this.init();
     }
     
@@ -25,6 +26,7 @@ class BatteryMonitor {
         this.connectWebSocket();
         this.initChart();
         this.setupEventListeners();
+        this.setupChatEventListeners();
         this.loadTheme();
     }
     
@@ -257,6 +259,115 @@ class BatteryMonitor {
                 this.saveSettings();
             });
         }
+    }
+    
+    setupChatEventListeners() {
+        const openChatBtn = document.getElementById('open-chat');
+        const closeChatBtn = document.getElementById('close-chat');
+        const chatWidget = document.getElementById('ai-chat-widget');
+        const sendBtn = document.getElementById('send-btn');
+        const chatInput = document.getElementById('chat-input');
+        const voiceToggle = document.getElementById('voice-alerts-toggle');
+        
+        if (openChatBtn) {
+            openChatBtn.addEventListener('click', () => {
+                chatWidget.style.display = 'flex';
+                openChatBtn.style.display = 'none';
+            });
+        }
+        
+        if (closeChatBtn) {
+            closeChatBtn.addEventListener('click', () => {
+                chatWidget.style.display = 'none';
+                openChatBtn.style.display = 'flex';
+            });
+        }
+        
+        if (sendBtn) {
+            sendBtn.addEventListener('click', () => this.sendMessage());
+        }
+        
+        if (chatInput) {
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.sendMessage();
+            });
+        }
+        
+        if (voiceToggle) {
+            voiceToggle.addEventListener('change', (e) => {
+                this.toggleVoiceAlerts(e.target.checked);
+            });
+        }
+    }
+    
+    async sendMessage() {
+        const input = document.getElementById('chat-input');
+        const message = input.value.trim();
+        if (!message) return;
+        
+        // Add user message to UI
+        this.appendMessage('user', message);
+        input.value = '';
+        
+        // Add loading state
+        const loadingMsg = this.appendMessage('ai', 'Thinking...');
+        
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    message: message,
+                    history: this.chatHistory 
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Remove loading message
+            loadingMsg.remove();
+            
+            if (data.response) {
+                this.appendMessage('ai', data.response);
+                this.chatHistory.push({ role: 'user', content: message });
+                this.chatHistory.push({ role: 'assistant', content: data.response });
+                
+                // Keep history manageable
+                if (this.chatHistory.length > 10) {
+                    this.chatHistory = this.chatHistory.slice(-10);
+                }
+            } else {
+                this.appendMessage('ai', 'Sorry, I encountered an error.');
+            }
+        } catch (error) {
+            console.error('Chat error:', error);
+            loadingMsg.remove();
+            this.appendMessage('ai', 'Sorry, I failed to connect to the AI Doctor.');
+        }
+    }
+    
+    appendMessage(role, text) {
+        const messagesDiv = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${role === 'user' ? 'user-message' : 'ai-message'}`;
+        messageDiv.textContent = text;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        return messageDiv;
+    }
+    
+    toggleVoiceAlerts(enabled) {
+        fetch('/api/toggle-voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                this.showToast(`Voice alerts ${enabled ? 'enabled' : 'disabled'}`, 'success');
+            }
+        });
     }
     
     toggleTheme() {
