@@ -12,6 +12,10 @@ import psutil
 # Flask imports
 from flask import Flask, render_template_string
 import webbrowser
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 try:
     import winsound
@@ -34,9 +38,10 @@ try:
     from ml_predictor import BatteryPredictor
     from device_manager import DeviceManager
     from config_manager import ConfigManager
-    from scheduler import Scheduler
+    from scheduler import MonitorScheduler as Scheduler
     from tray_app import TrayApp
     from ai_analytics import AIBatteryAnalyzer, AIProductivityEnhancer
+    from discord_bot import DiscordBot
 except ImportError as e:
     print(f"Warning: Could not import additional modules: {e}")
     print("Some advanced features may not be available.")
@@ -88,6 +93,7 @@ class BatteryMonitor:
             self.config_manager = ConfigManager() if 'ConfigManager' in globals() else None
             self.ai_analyzer = AIBatteryAnalyzer(self.db_manager) if 'AIBatteryAnalyzer' in globals() else None
             self.ai_productivity = AIProductivityEnhancer(self.db_manager) if 'AIProductivityEnhancer' in globals() else None
+            self.discord_bot = DiscordBot(self) if 'DiscordBot' in globals() else None
         except Exception as e:
             print(f"Warning: Failed to initialize some components: {e}")
             self.db_manager = None
@@ -97,6 +103,7 @@ class BatteryMonitor:
             self.config_manager = None
             self.ai_analyzer = None
             self.ai_productivity = None
+            self.discord_bot = None
 
     def start(self) -> None:
         self._start_time = datetime.now()
@@ -118,6 +125,11 @@ class BatteryMonitor:
         self._input_thread = threading.Thread(target=self._input_loop, daemon=True)
         self._input_thread.start()
 
+        # Start Discord Bot
+        if self.discord_bot:
+            print("Starting Discord Bot...")
+            self.discord_bot.start()
+
         try:
             self._monitor_loop()
         except KeyboardInterrupt:
@@ -127,6 +139,8 @@ class BatteryMonitor:
 
     def stop(self) -> None:
         self._stop_event.set()
+        if self.discord_bot:
+            self.discord_bot.stop()
         print("Stopping monitor...")
 
     def _input_loop(self) -> None:
@@ -633,6 +647,13 @@ class BatteryMonitor:
             return 0.0, False, 'laptop', None, None
         # Get detailed laptop battery info
         laptop_extra = self._get_laptop_battery_details()
+        if laptop_extra is None:
+            laptop_extra = {}
+        
+        # Add time left if available
+        if batt.secsleft != psutil.POWER_TIME_UNLIMITED and batt.secsleft != psutil.POWER_TIME_UNKNOWN:
+            laptop_extra['time_left_seconds'] = batt.secsleft
+
         return float(batt.percent), bool(batt.power_plugged), 'laptop', None, laptop_extra
 
     def _get_battery_percent(self) -> float:

@@ -28,6 +28,8 @@ except ImportError:
     TwilioClient = None
 
 
+import requests
+
 class NotificationManager:
     """Manages all types of notifications"""
     
@@ -49,6 +51,9 @@ class NotificationManager:
         self.twilio_account_sid = None
         self.twilio_auth_token = None
         self.twilio_from_number = None
+
+        # Discord configuration
+        self.discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         
         # Create sounds directory if it doesn't exist
         os.makedirs(self.sounds_dir, exist_ok=True)
@@ -220,6 +225,39 @@ class NotificationManager:
         except Exception as e:
             print(f"Error sending SMS: {e}")
             return False
+
+    def send_discord_webhook(self, message: str, device_type: str = None, 
+                           threshold: float = None, battery_percentage: float = None):
+        """Send notification via Discord Webhook"""
+        if not self.discord_webhook_url:
+            print("Discord Webhook URL not configured.")
+            return False
+            
+        try:
+            payload = {
+                "content": message,
+                "username": "Battery Monitor"
+            }
+            
+            response = requests.post(self.discord_webhook_url, json=payload)
+            response.raise_for_status()
+            
+            # Log notification
+            if self.db_manager:
+                self.db_manager.log_notification(
+                    notification_type='discord',
+                    device_type=device_type,
+                    title='Discord Alert',
+                    message=message,
+                    threshold=threshold,
+                    battery_percentage=battery_percentage
+                )
+                
+            print("Discord webhook sent successfully")
+            return True
+        except requests.exceptions.RequestException as e:
+            print(f"Error sending Discord webhook: {e}")
+            return False
     
     def send_threshold_alert(self, device_type: str, battery_percentage: float,
                            threshold: float, profile_settings: dict = None):
@@ -275,6 +313,17 @@ Consider unplugging the charger to preserve battery health.
             self.send_sms(
                 to_number=settings['phone_number'],
                 message=sms_message,
+                device_type=device_type,
+                threshold=threshold,
+                battery_percentage=battery_percentage
+            )
+
+        # Discord
+        if settings.get('enable_discord', False) or (self.discord_webhook_url and settings.get('enable_discord') is not False):
+            # Default to enabled if URL is present and not explicitly disabled
+            discord_message = f"**Battery Alert** 🔋\nDevice: {device_type.capitalize()}\nLevel: {battery_percentage:.0f}%\nThreshold: {threshold}%\nPlease check your device!"
+            self.send_discord_webhook(
+                message=discord_message,
                 device_type=device_type,
                 threshold=threshold,
                 battery_percentage=battery_percentage

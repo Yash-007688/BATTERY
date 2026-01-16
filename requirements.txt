@@ -33,3 +33,4 @@ requests>=2.31.0
 
 # Scheduling (using built-in sched and threading)
 # Windows Task Scheduler (using subprocess)
+discord.py>=2.3.0
