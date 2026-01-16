@@ -235,11 +235,21 @@ class BatteryMonitor:
         """Start monitoring to calculate discharge rate without showing regular logs"""
         self._start_time = datetime.now()
         self._start_percent = self._get_battery_percent()
+        
+        # Initialize 1-minute tracking window (same as _monitor_loop)
+        self._minute_anchor_time = self._start_time
+        self._minute_anchor_percent = self._start_percent
+        
         print(
             f"Discharge calculation mode started at {self._start_time.strftime('%H:%M:%S')}. "
             f"Initial battery: {self._start_percent:.2f}%"
         )
         print("Calculating discharge rate every 10-15 minutes...")
+
+        # Start Discord Bot if available
+        if self.discord_bot:
+            print("Starting Discord Bot in discharge mode...")
+            self.discord_bot.start()
         
         # Store initial values for calculation
         last_calc_time = datetime.now()
@@ -248,6 +258,26 @@ class BatteryMonitor:
         try:
             while not self._stop_event.is_set():
                 percent, plugged, device, device_id, extra_info = self._get_battery_info()
+
+                # Update current device context for AI
+                if device_id:
+                    self._current_device_id = device_id
+                    self._current_device_type = device
+
+                # Track per-minute changes (crucial for /battery predictions)
+                now_dt = datetime.now()
+                if self._minute_anchor_time is None:
+                    self._minute_anchor_time = now_dt
+                    self._minute_anchor_percent = percent
+                else:
+                    elapsed = (now_dt - self._minute_anchor_time).total_seconds()
+                    while elapsed >= 60.0 and self._minute_anchor_percent is not None:
+                        diff = percent - self._minute_anchor_percent
+                        self._per_minute_diffs.append(diff)
+                        # Advance anchor
+                        self._minute_anchor_time = self._minute_anchor_time + timedelta(seconds=60)
+                        self._minute_anchor_percent = percent
+                        elapsed -= 60.0
                 
                 # Only calculate discharge when not plugged in
                 if not plugged:
