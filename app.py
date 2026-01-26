@@ -79,6 +79,9 @@ class BatteryMonitor:
         self._current_device_id: str | None = None
         self._current_device_type: str = 'laptop'
 
+        # Mode tracking (threshold vs discharge)
+        self._mode: str = 'threshold'
+
         # Per-minute change tracking (percent-based; voltage not available via psutil)
         self._minute_anchor_time: datetime | None = None
         self._minute_anchor_percent: float | None = None
@@ -389,6 +392,37 @@ class BatteryMonitor:
                 self._reached_time = None
             self._last_below_threshold = current_below
 
+            # Automatic Mode Switching Logic
+            if self._mode == 'threshold':
+                if percent >= self.threshold_percent:
+                    self._mode = 'discharge'
+                    msg = f"Mode Switch: Threshold ({self.threshold_percent}%) reached. Switching to DISCHARGE mode."
+                    print(f"[{now_str}] {msg}")
+                    self._trigger_alert(msg)
+                    self._alert_active = True
+                    # Send Discord alert
+                    if self.discord_bot:
+                        asyncio.run_coroutine_threadsafe(
+                            self.discord_bot.send_alert(f"🔋 **{msg}**"), 
+                            self.discord_bot._loop
+                        )
+            
+            elif self._mode == 'discharge':
+                if percent <= 7:
+                    self._mode = 'threshold'
+                    msg = "Mode Switch: Battery critical (7%). Switching to THRESHOLD mode."
+                    print(f"[{now_str}] {msg}")
+                    self._trigger_alert(msg)
+                    self._alert_active = True
+                    # Send Discord alert
+                    if self.discord_bot:
+                        asyncio.run_coroutine_threadsafe(
+                             self.discord_bot.send_alert(f"⚠️ **{msg}**"), 
+                             self.discord_bot._loop
+                        )
+
+            line += f" | Mode: {self._mode.upper()}"
+
             # If snoozed, skip alert until snooze ends
             if self._snooze_until is not None and datetime.now() < self._snooze_until:
                 remaining = self._snooze_until - datetime.now()
@@ -398,15 +432,29 @@ class BatteryMonitor:
                     # Snooze expired
                     self._snooze_until = None
 
-                # Only trigger alert when plugged and at/above threshold and not dismissed
-                if plugged and not self._dismissed_until_below and percent >= self.threshold_percent:
-                    if self._reached_time is None:
-                        self._reached_time = datetime.now()
-                    if not self._alert_active:
-                        self._trigger_alert()
-                        self._alert_active = True
-                        self._alerted = True
-                    line += " | Threshold reached! (type 'snooze' or 'dismiss')"
+                # Monitoring warnings based on mode
+                if self._mode == 'threshold':
+                     # We want to charge?
+                     if plugged and percent >= self.threshold_percent:
+                         # We hit target, alert already handled by switch, but keep reminding if plugged
+                         if not self._alert_active and not self._dismissed_until_below:
+                             msg = f"Battery at {percent:.0f}% (Target: {self.threshold_percent}%). Please unplug."
+                             self._trigger_alert(msg)
+                             self._alert_active = True
+                             # Send Discord alert
+                             if self.discord_bot:
+                                 asyncio.run_coroutine_threadsafe(
+                                     self.discord_bot.send_alert(f"⚡ **{msg}**"), 
+                                     self.discord_bot._loop
+                                 )
+                         line += " | Threshold reached!"
+                elif self._mode == 'discharge':
+                     # We want to discharge
+                     if plugged:
+                         # Warn if plugged during discharge mode
+                         line += " | REMINDER: Unplug for Discharge Mode"
+                         # Optional: Alert user to unplug? Maybe too annoying.
+                         pass
 
             # Every full minute since last anchor, compute percent difference and record
             now_dt = datetime.now()
@@ -764,17 +812,18 @@ class BatteryMonitor:
             except Exception:
                 pass
 
-    def _trigger_alert(self) -> None:
+    def _trigger_alert(self, custom_message: str = None) -> None:
         # 5 beeps, then present options
         self._beep_times(5)
-        print("Battery reached threshold. Type 'snooze' to mute for 1 minute or 'dismiss' (requires unplugging charger).")
+        msg = custom_message if custom_message else "Battery reached threshold. Type 'snooze' to mute for 1 minute or 'dismiss' (requires unplugging charger)."
+        print(msg)
         
         # Send Windows notification when battery reaches threshold
         if notification:
             try:
                 notification.notify(
                     title="Battery Monitor",
-                    message=f"Battery reached {self.threshold_percent}% threshold!",
+                    message=msg,
                     timeout=10
                 )
             except Exception as e:

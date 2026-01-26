@@ -51,6 +51,10 @@ class ProfileConfig:
     
     # Multiple thresholds
     additional_thresholds: List[int] = None
+
+    # Discord Integration
+    discord_channel_id: int = None
+    enable_discord_alerts: bool = True
     
     def __post_init__(self):
         if self.additional_thresholds is None:

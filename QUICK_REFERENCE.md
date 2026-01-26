@@ -88,6 +88,46 @@ adb devices
 # Should show your device
 ```
 
+### Wireless Debugging (No USB Cable Needed!)
+**For Android 11+ (Recommended):**
+1. On phone: Settings → Developer Options → Wireless debugging
+2. Enable "Wireless debugging"
+3. Tap "Pair device with pairing code"
+4. Note the IP address, pairing port, and pairing code
+5. Run the connection script:
+   ```bash
+   python connect_wireless_adb.py
+   ```
+   Or use the batch file:
+   ```bash
+   connect_wireless.bat
+   ```
+6. Follow the prompts to pair and connect
+
+**For Older Android (Direct Connect):**
+1. Enable "Wireless debugging" in Developer Options
+2. Note the IP address and port shown
+3. Connect using:
+   ```bash
+   adb connect IP:PORT
+   # Example: adb connect 192.168.1.100:5555
+   ```
+
+**Quick Connect (Windows):**
+```bash
+# Direct connection
+connect_wireless.bat 192.168.1.100:5555
+
+# With pairing (Android 11+)
+connect_wireless.bat 192.168.1.100:XXXXX 123456
+```
+
+**Important Notes:**
+- Phone and computer must be on the same WiFi network
+- Wireless debugging stays active until you disable it
+- Connection persists across app restarts
+- More convenient than USB - no cable needed!
+
 ---
 
 ## 🔔 Notification Setup

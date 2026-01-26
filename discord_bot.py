@@ -206,6 +206,33 @@ class DiscordBot:
             
             await ctx.send(embed=embed)
 
+        @self.bot.command(name='setalertchannel')
+        async def set_alert_channel(ctx):
+            """Set the current channel for battery alerts"""
+            self.monitor.config_manager.set_value('discord_channel_id', ctx.channel.id)
+            self.monitor.config_manager.save_config()
+            await ctx.send(f"✅ Battery alerts will now be sent to {ctx.channel.mention}")
+
+            await self.send_alert("🔔 This is a test alert!", mention=True)
+
+    async def send_alert(self, message, mention=True):
+        """Send an alert to the configured channel"""
+        if not self.monitor.config_manager:
+            return
+
+        channel_id = self.monitor.config_manager.get_value('discord_channel_id')
+        if not channel_id:
+            return
+
+        channel = self.bot.get_channel(int(channel_id))
+        if channel:
+            if mention:
+                message = f"@everyone {message}"
+            try:
+                await channel.send(message)
+            except Exception as e:
+                print(f"Failed to send Discord alert: {e}")
+
     def start(self):
         """Start the bot in a separate thread"""
         if not self.token:

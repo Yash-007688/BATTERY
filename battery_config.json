@@ -2,7 +2,7 @@
   "active_profile": "default",
   "profiles": {
     "default": {
-      "threshold_percent": 100,
+      "threshold_percent": 80,
       "poll_interval_seconds": 30,
       "enable_desktop_notifications": true,
       "enable_sound": true,
@@ -29,5 +29,5 @@
     }
   },
   "version": "2.0",
-  "last_updated": "2026-01-02T14:25:29.444331"
+  "last_updated": "2026-01-26T14:47:43.021710"
 }
